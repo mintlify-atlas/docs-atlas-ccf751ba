@@ -1,0 +1,155 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Semgrep",
+  "projectDescription": "A fast, open-source static analysis tool that finds bugs, enforces coding standards, and scans for security vulnerabilities across 30+ programming languages using patterns that look like source code.",
+  "theme": "palm",
+  "primaryColor": "#1bc096",
+  "lightColor": "#92dfd1",
+  "darkColor": "#2c3434",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/rules",
+              "concepts/patterns",
+              "concepts/metavariables",
+              "concepts/languages"
+            ]
+          },
+          {
+            "group": "Writing Rules",
+            "pages": [
+              "writing-rules/overview",
+              "writing-rules/pattern-syntax",
+              "writing-rules/rule-syntax",
+              "writing-rules/data-flow",
+              "writing-rules/autofix"
+            ]
+          },
+          {
+            "group": "Running Scans",
+            "pages": [
+              "scanning/local-scan",
+              "scanning/ci-cd",
+              "scanning/pre-commit",
+              "scanning/docker"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/mcp-server",
+              "integrations/vscode",
+              "integrations/github-actions",
+              "integrations/gitlab"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/semgrepignore",
+              "configuration/settings",
+              "configuration/metrics"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/overview",
+              "cli/scan",
+              "cli/ci",
+              "cli/login",
+              "cli/publish",
+              "cli/mcp",
+              "cli/test",
+              "cli/validate"
+            ]
+          },
+          {
+            "group": "Output Formats",
+            "pages": [
+              "cli/output/text",
+              "cli/output/json",
+              "cli/output/sarif"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Rule Reference",
+        "groups": [
+          {
+            "group": "Rule Schema",
+            "pages": [
+              "rules/schema",
+              "rules/operators",
+              "rules/focus-metavariable",
+              "rules/severity-levels"
+            ]
+          },
+          {
+            "group": "Analysis Types",
+            "pages": [
+              "rules/taint-analysis",
+              "rules/supply-chain",
+              "rules/secrets"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Pattern-based code search across 30+ languages",
+    "Semantic pattern matching with metavariables and ellipsis operators",
+    "SAST, SCA (Supply Chain), and Secrets scanning",
+    "Taint analysis for data-flow tracking",
+    "Autofix support for automated code remediation",
+    "CI/CD integration (GitHub, GitLab, CircleCI)",
+    "MCP server for AI coding assistant integration",
+    "Rule registry with 2,000+ community-driven rules",
+    "Incremental scanning on pull requests",
+    "Pre-commit hook support"
+  ],
+  "publicApiSurface": [
+    "semgrep scan",
+    "semgrep ci",
+    "semgrep login",
+    "semgrep logout",
+    "semgrep publish",
+    "semgrep mcp",
+    "semgrep test",
+    "semgrep validate",
+    "semgrep --config <rule>",
+    "semgrep --pattern <pattern> --lang <language>",
+    "semgrep --autofix",
+    "semgrep --output <format>",
+    "semgrep --severity <level>",
+    "semgrep --exclude <pattern>",
+    "semgrep --include <pattern>"
+  ]
+}
