@@ -1,0 +1,105 @@
+---
+title: "semgrep publish"
+description: "Upload custom rules to the Semgrep Registry or your organization."
+---
+
+`semgrep publish` uploads a Semgrep rule file to the Semgrep Registry or to your organization's private rule library.
+
+```bash
+semgrep publish [OPTIONS] TARGET
+```
+
+`TARGET` is a path to a rule YAML file or a directory containing rule YAML files.
+
+## Prerequisites
+
+- You must be logged in. Run `semgrep login` first.
+- The rule file must be valid. Run `semgrep validate` to check before publishing.
+- To publish a public rule, the file must contain exactly one rule.
+
+## Flags
+
+<ParamField path="--visibility" type="string" default="org_private">
+  Controls who can see the published rule. Options:
+
+  - `org_private` (default): Visible only to members of your organization.
+  - `unlisted`: Listed within your organization but not discoverable by others.
+  - `public`: Published to the public Semgrep Registry. Requires `--registry-id`.
+</ParamField>
+
+<ParamField path="--registry-id" type="string">
+  The path the rule will have in the public registry. Required when `--visibility=public`.
+
+  Example: `python.flask.security.my-new-rule`
+</ParamField>
+
+## Example workflow
+
+<Steps>
+  <Step title="Write your rule">
+    Create a rule file:
+
+    ```yaml rules/no-hardcoded-token.yaml
+    rules:
+      - id: no-hardcoded-token
+        patterns:
+          - pattern: $TOKEN = "..."
+          - metavariable-regex:
+              metavariable: $TOKEN
+              regex: '.*(token|secret|password|api_key).*'
+        message: Hardcoded credential detected in $TOKEN.
+        languages: [python]
+        severity: ERROR
+    ```
+  </Step>
+
+  <Step title="Validate the rule">
+    ```bash
+    semgrep validate rules/no-hardcoded-token.yaml
+    ```
+
+    Fix any errors before continuing.
+  </Step>
+
+  <Step title="Log in">
+    ```bash
+    semgrep login
+    ```
+  </Step>
+
+  <Step title="Publish the rule">
+    ```bash
+    # Publish as private to your organization (default)
+    semgrep publish rules/no-hardcoded-token.yaml
+
+    # Publish as unlisted
+    semgrep publish --visibility=unlisted rules/no-hardcoded-token.yaml
+
+    # Publish to the public registry
+    semgrep publish \
+      --visibility=public \
+      --registry-id=python.lang.security.no-hardcoded-token \
+      rules/no-hardcoded-token.yaml
+    ```
+  </Step>
+</Steps>
+
+## Publishing a directory
+
+If `TARGET` is a directory, Semgrep finds all rule files in it and publishes each one individually with the same visibility setting.
+
+<Note>
+  Only one rule can be published publicly at a time. If you pass a directory with `--visibility=public`, the command exits with an error.
+</Note>
+
+## Output
+
+For a successful publish, Semgrep prints the URL of the uploaded rule:
+
+```text
+Found 1 configs to publish with visibility "org_private"
+--> Uploading rules/no-hardcoded-token.yaml (test cases: [])
+    Published org_private rule at https://semgrep.dev/r/python.lang.security.no-hardcoded-token
+```
+
+For public rules, Semgrep creates a pull request in the Semgrep Registry repository and prints its URL.

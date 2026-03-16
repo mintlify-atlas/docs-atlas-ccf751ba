@@ -1,0 +1,176 @@
+---
+title: "JSON output"
+description: "Reference for Semgrep's JSON output format, including schema documentation for all fields."
+---
+
+Semgrep's JSON output is a machine-readable format suitable for programmatic processing, integrating with dashboards, or feeding into other security tooling.
+
+## Enabling JSON output
+
+```bash
+# Print JSON to stdout
+semgrep scan --config=auto --json .
+
+# Write JSON to a file while printing text output to the terminal
+semgrep scan --config=auto --json-output=results.json .
+```
+
+## Example output
+
+```json
+{
+  "results": [
+    {
+      "check_id": "python.lang.security.audit.eval-injection",
+      "path": "src/app.py",
+      "start": { "line": 42, "col": 11, "offset": 1024 },
+      "end":   { "line": 42, "col": 31, "offset": 1044 },
+      "extra": {
+        "message": "Avoid using eval() on user-controlled input.",
+        "severity": "ERROR",
+        "metadata": {
+          "category": "security",
+          "confidence": "HIGH",
+          "cwe": ["CWE-95: Improper Neutralization of Directives in Eval"]
+        },
+        "lines": "result = eval(user_input)",
+        "fingerprint": "a1b2c3d4...",
+        "is_ignored": false,
+        "engine_kind": "OSS"
+      }
+    }
+  ],
+  "errors": [],
+  "paths": {
+    "scanned": ["src/app.py", "src/utils.py"],
+    "skipped": [
+      {
+        "path": "vendor/large-lib.min.js",
+        "reason": "exceeded_max_target_bytes"
+      }
+    ]
+  },
+  "version": "1.95.0"
+}
+```
+
+## Schema
+
+<ResponseField name="results" type="array">
+  Array of findings. Each element represents one rule match.
+
+  <Expandable title="results[]">
+    <ResponseField name="check_id" type="string">
+      The rule ID that produced this finding (e.g., `python.lang.security.audit.eval-injection`).
+    </ResponseField>
+
+    <ResponseField name="path" type="string">
+      Relative path to the file containing the finding.
+    </ResponseField>
+
+    <ResponseField name="start" type="object">
+      Start position of the match.
+
+      <Expandable title="start">
+        <ResponseField name="line" type="integer">1-indexed line number.</ResponseField>
+        <ResponseField name="col" type="integer">1-indexed column number.</ResponseField>
+        <ResponseField name="offset" type="integer">Byte offset from the start of the file.</ResponseField>
+      </Expandable>
+    </ResponseField>
+
+    <ResponseField name="end" type="object">
+      End position of the match. Same structure as `start`.
+    </ResponseField>
+
+    <ResponseField name="extra" type="object">
+      Additional finding metadata.
+
+      <Expandable title="extra">
+        <ResponseField name="message" type="string">
+          Human-readable description from the rule's `message` field. Metavariables are interpolated.
+        </ResponseField>
+
+        <ResponseField name="severity" type="string">
+          Severity level: `INFO`, `WARNING`, or `ERROR`.
+        </ResponseField>
+
+        <ResponseField name="metadata" type="object">
+          Arbitrary key-value pairs from the rule's `metadata` section. Common fields include `category`, `confidence`, `cwe`, `owasp`, `references`, and `technology`.
+        </ResponseField>
+
+        <ResponseField name="lines" type="string">
+          The matched source code lines as a string.
+        </ResponseField>
+
+        <ResponseField name="fingerprint" type="string">
+          A stable hash of the finding used for deduplication and tracking.
+        </ResponseField>
+
+        <ResponseField name="is_ignored" type="boolean">
+          `true` if the finding has a `# nosem` suppression comment. Ignored findings are included in JSON output but not counted in the exit code logic.
+        </ResponseField>
+
+        <ResponseField name="fix" type="string">
+          The autofix text, if the rule defines a `fix` field.
+        </ResponseField>
+
+        <ResponseField name="dataflow_trace" type="object">
+          Dataflow trace for taint findings (Pro Engine). Contains the source, sink, and intermediate nodes.
+        </ResponseField>
+
+        <ResponseField name="engine_kind" type="string">
+          The engine that produced this finding: `OSS` or `PRO`.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Array of scan errors. Each element describes a file or rule that could not be processed.
+
+  <Expandable title="errors[]">
+    <ResponseField name="code" type="integer">Exit code associated with this error type.</ResponseField>
+    <ResponseField name="level" type="string">Severity of the error: `error` or `warning`.</ResponseField>
+    <ResponseField name="type_" type="string">Machine-readable error type (e.g., `ParseError`, `Timeout`).</ResponseField>
+    <ResponseField name="message" type="string">Human-readable error message.</ResponseField>
+    <ResponseField name="path" type="string">File path where the error occurred, if applicable.</ResponseField>
+    <ResponseField name="rule_id" type="string">Rule ID associated with the error, if applicable.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="paths" type="object">
+  Summary of file targeting.
+
+  <Expandable title="paths">
+    <ResponseField name="scanned" type="array">
+      List of file paths that were successfully scanned.
+    </ResponseField>
+
+    <ResponseField name="skipped" type="array">
+      List of files that were skipped. Each entry contains `path` and `reason`.
+
+      Possible reasons: `exceeded_max_target_bytes`, `excluded_by_pattern`, `wrong_language`, `cli_include_flags`, `semgrepignore`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  The Semgrep version that produced this output.
+</ResponseField>
+
+## Processing JSON output
+
+```bash
+# Count total findings
+semgrep scan --config=auto --json . | jq '.results | length'
+
+# List all rule IDs that matched
+semgrep scan --config=auto --json . | jq '[.results[].check_id] | unique'
+
+# Filter to ERROR severity only
+semgrep scan --config=auto --json . | jq '.results[] | select(.extra.severity == "ERROR")'
+
+# Check for errors
+semgrep scan --config=auto --json . | jq '.errors'
+```

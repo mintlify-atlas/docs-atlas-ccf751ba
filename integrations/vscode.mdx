@@ -1,0 +1,170 @@
+---
+title: "VS Code"
+description: "Integrate Semgrep with Visual Studio Code and GitHub Copilot using the MCP server or the official Semgrep extension."
+---
+
+Semgrep integrates with Visual Studio Code in two ways:
+
+- **MCP server** — Lets GitHub Copilot (and other Copilot-compatible chat interfaces) call Semgrep tools directly from the chat panel.
+- **Semgrep VS Code extension** — Surfaces Semgrep findings inline in the editor as you write code.
+
+## MCP server setup
+
+The Semgrep MCP server gives GitHub Copilot access to Semgrep tools. Once configured, you can ask Copilot to scan code, fetch findings, or write custom rules — and it will call Semgrep directly.
+
+<Steps>
+  <Step title="Install Semgrep">
+    Install Semgrep using Homebrew or pip:
+
+    ```bash
+    brew install semgrep
+    # or
+    python3 -m pip install semgrep
+    ```
+  </Step>
+  <Step title="Add the MCP server to VS Code user settings">
+    Open the Command Palette with **Ctrl+Shift+P** (or **Cmd+Shift+P** on macOS), then select **Preferences: Open User Settings (JSON)**.
+
+    Add the following block:
+
+    ```json settings.json
+    {
+      "mcp": {
+        "servers": {
+          "semgrep": {
+            "command": "semgrep",
+            "args": ["mcp"]
+          }
+        }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Reload VS Code">
+    Save the settings file and reload VS Code. The Semgrep MCP server will start automatically when Copilot needs it.
+  </Step>
+  <Step title="Verify the integration">
+    Open the Copilot chat panel and ask it to scan a file:
+
+    ```text
+    Scan this file for security vulnerabilities using Semgrep.
+    ```
+
+    Copilot will call the `security_check` tool and return findings inline.
+  </Step>
+</Steps>
+
+<Tip>
+  Once the MCP server is configured, Copilot can automatically scan files after edits if you add a prompt rule instructing it to do so.
+</Tip>
+
+## Workspace-level config
+
+To configure the MCP server per workspace instead of globally, create a `.vscode/mcp.json` file in your project root:
+
+```json .vscode/mcp.json
+{
+  "servers": {
+    "semgrep": {
+      "command": "semgrep",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+This file can be committed to version control so every developer on the team gets the same MCP configuration automatically.
+
+## Adding your SEMGREP_APP_TOKEN
+
+To enable the `semgrep_findings` tool and connect to the Semgrep AppSec Platform, add your token to the MCP server configuration:
+
+```json settings.json
+{
+  "mcp": {
+    "servers": {
+      "semgrep": {
+        "command": "semgrep",
+        "args": ["mcp"],
+        "env": {
+          "SEMGREP_APP_TOKEN": "<your-token>"
+        }
+      }
+    }
+  }
+}
+```
+
+Generate a token from [Settings → Tokens → API](https://semgrep.dev/orgs/-/settings/tokens/api) in the Semgrep AppSec Platform.
+
+## Docker-based configuration
+
+If you prefer not to install Semgrep locally, you can run the MCP server in Docker:
+
+```json settings.json
+{
+  "mcp": {
+    "servers": {
+      "semgrep": {
+        "command": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "semgrep/semgrep",
+          "semgrep",
+          "mcp",
+          "-t",
+          "stdio"
+        ]
+      }
+    }
+  }
+}
+```
+
+To include your app token with the Docker configuration:
+
+```json settings.json
+{
+  "mcp": {
+    "servers": {
+      "semgrep": {
+        "command": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "-e", "SEMGREP_APP_TOKEN=<your-token>",
+          "semgrep/semgrep",
+          "semgrep",
+          "mcp",
+          "-t",
+          "stdio"
+        ]
+      }
+    }
+  }
+}
+```
+
+## Semgrep VS Code extension
+
+The [semgrep-vscode](https://github.com/semgrep/semgrep-vscode) extension is the official Semgrep extension for Visual Studio Code. It provides:
+
+- Inline findings as you type
+- Squiggly underlines for issues detected by Semgrep rules
+- Quick fixes where Semgrep autofix is available
+- Integration with your Semgrep AppSec Platform findings
+
+Install it from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=Semgrep.semgrep) or search for **Semgrep** in the Extensions panel.
+
+<Tip>
+  The VS Code extension scans files automatically on save, giving you immediate feedback on security issues without running a command.
+</Tip>
+
+## Further reading
+
+- [MCP Server reference](/integrations/mcp-server) — Full list of available MCP tools, prompts, and resources
+- [VS Code MCP documentation](https://code.visualstudio.com/docs/copilot/chat/mcp-servers) — Official VS Code guide for MCP server configuration
+- [semgrep-vscode on GitHub](https://github.com/semgrep/semgrep-vscode) — Source code and issue tracker for the VS Code extension

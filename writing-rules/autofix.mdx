@@ -1,0 +1,194 @@
+---
+title: "Autofix"
+description: "Use the fix and fix-regex fields to automatically rewrite matched code. Apply fixes with --autofix and preview them with --dryrun."
+keywords: ["semgrep autofix", "fix", "fix-regex", "code rewriting", "automated remediation"]
+---
+
+Semgrep can automatically rewrite matched code when you add a `fix` or `fix-regex` field to a rule. Run `semgrep --autofix` to apply fixes in place, or `semgrep --autofix --dryrun` to preview what would change without writing to disk.
+
+<Warning>
+Always review autofixes before applying them to production code. Semgrep applies fixes mechanically based on matched patterns. In complex cases — such as code with side effects, pointer aliasing, or non-obvious control flow — the generated fix may change program behavior. Use `--dryrun` first and verify the diff.
+</Warning>
+
+## The `fix` field
+
+The `fix` field is a string that replaces the matched code. Metavariables bound during matching are interpolated into the fix string:
+
+```yaml
+rules:
+  - id: use-sha256-not-md5
+    pattern: hashlib.md5($DATA)
+    fix: hashlib.sha256($DATA)
+    message: "MD5 is cryptographically weak. Use SHA-256 instead."
+    severity: WARNING
+    languages: [python]
+```
+
+Before and after applying `--autofix`:
+
+```python
+# Before
+digest = hashlib.md5(content)  # [!code --]
+# After
+digest = hashlib.sha256(content)  # [!code ++]
+```
+
+## The `fix-regex` field
+
+The `fix-regex` field applies a regular expression replacement to the matched text. It accepts:
+- `regex`: PCRE regex to match against the matched text
+- `replacement`: Replacement string; supports `\1`, `\2`, etc. for capture groups
+- `count` (optional): Maximum number of replacements within the matched region
+
+```yaml
+rules:
+  - id: rename-deprecated-function
+    pattern: client.sendRequest($ARGS)
+    fix-regex:
+      regex: 'sendRequest'
+      replacement: 'sendRequestV2'
+    message: "sendRequest is deprecated. Use sendRequestV2."
+    severity: WARNING
+    languages: [python]
+```
+
+`fix-regex` is useful when the `fix` string would require complex escaping, or when you need to transform part of the matched text using capture groups:
+
+```yaml
+rules:
+  - id: quote-sql-identifier
+    pattern: $DB.execute("SELECT * FROM " + $TABLE)
+    fix-regex:
+      regex: '("SELECT \\* FROM ") \+ (\w+)'
+      replacement: '"SELECT * FROM \"" + \2 + "\""'
+    message: "SQL identifier should be quoted"
+    severity: WARNING
+    languages: [python]
+```
+
+## Running autofixes
+
+```bash
+# Apply fixes in place
+semgrep --config my-rules.yaml --autofix path/to/code/
+
+# Preview fixes without writing to disk
+semgrep --config my-rules.yaml --autofix --dryrun path/to/code/
+
+# Apply fixes and save a diff
+semgrep --config my-rules.yaml --autofix path/to/code/ 2>&1 | tee autofix.diff
+```
+
+When you run `--autofix`, Semgrep prints each file it modifies and how many fixes it applied.
+
+## Common autofix patterns
+
+### Replacing deprecated API calls
+
+```yaml
+rules:
+  - id: replace-md5-with-sha256
+    pattern-either:
+      - pattern: hashlib.md5($DATA)
+      - pattern: hashlib.md5($DATA).hexdigest()
+    fix: hashlib.sha256($DATA)
+    message: "Replace MD5 with SHA-256"
+    severity: WARNING
+    languages: [python]
+```
+
+```python
+# Before
+token = hashlib.md5(secret).hexdigest()  # [!code --]
+# After
+token = hashlib.sha256(secret)  # [!code ++]
+```
+
+### Adding missing security flags
+
+```yaml
+rules:
+  - id: cookie-missing-httponly
+    patterns:
+      - pattern: response.set_cookie($NAME, $VALUE)
+      - pattern-not: response.set_cookie($NAME, $VALUE, ..., httponly=True, ...)
+    fix: response.set_cookie($NAME, $VALUE, httponly=True, secure=True)
+    message: "Cookie $NAME is missing httponly and secure flags"
+    severity: WARNING
+    languages: [python]
+```
+
+```python
+# Before
+response.set_cookie("session", token)  # [!code --]
+# After
+response.set_cookie("session", token, httponly=True, secure=True)  # [!code ++]
+```
+
+### Migrating between library versions
+
+```yaml
+rules:
+  - id: migrate-requests-to-httpx
+    pattern: requests.get($URL, ...)
+    fix: httpx.get($URL)
+    message: "Migrate from requests to httpx for async-compatible HTTP calls"
+    severity: INFO
+    languages: [python]
+```
+
+```python
+# Before
+response = requests.get(url, timeout=10)  # [!code --]
+# After
+response = httpx.get(url)  # [!code ++]
+```
+
+### Fixing JavaScript import paths
+
+```yaml
+rules:
+  - id: update-import-path
+    pattern: import $NAME from 'old-library'
+    fix: import $NAME from 'new-library'
+    message: "old-library has been renamed to new-library"
+    severity: WARNING
+    languages: [javascript, typescript]
+```
+
+```javascript
+// Before
+import { createStore } from 'old-library' // [!code --]
+// After
+import { createStore } from 'new-library' // [!code ++]
+```
+
+## Metavariable interpolation in fixes
+
+Any metavariable bound during matching is available in the `fix` string. Semgrep replaces `$VAR` with the exact source text captured for that metavariable:
+
+```yaml
+rules:
+  - id: add-encoding-to-open
+    pattern: open($PATH, $MODE)
+    fix: open($PATH, $MODE, encoding="utf-8")
+    message: "Specify encoding explicitly when opening files"
+    severity: INFO
+    languages: [python]
+```
+
+```python
+# Before
+with open(filename, "r") as f:  # [!code --]
+# After
+with open(filename, "r", encoding="utf-8") as f:  # [!code ++]
+```
+
+Metavariable interpolation preserves the original text exactly, including any surrounding whitespace captured in the match.
+
+## Limitations
+
+- A rule can have `fix` **or** `fix-regex`, but not both.
+- Fixes operate on the matched range only. They cannot insert code outside the matched region (e.g., adding an import at the top of a file).
+- Autofix is applied per-match. If two matches overlap, behavior depends on the order of application.
+- For taint rules (`mode: taint`), the `fix` field is currently not supported.

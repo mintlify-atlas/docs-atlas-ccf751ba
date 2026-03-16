@@ -1,0 +1,148 @@
+---
+title: "GitHub Actions"
+description: "Run Semgrep scans automatically in GitHub Actions on pull requests and pushes to your main branch."
+---
+
+Running Semgrep in GitHub Actions lets you catch security vulnerabilities and code quality issues on every pull request before they merge. Semgrep supports differential scanning, so it only reports findings introduced by the current PR — keeping the signal high and the noise low.
+
+## Complete workflow
+
+Add the following workflow file to your repository at `.github/workflows/semgrep.yml`:
+
+```yaml .github/workflows/semgrep.yml
+name: Semgrep
+
+on:
+  push:
+    branches: ["main"]
+  pull_request: {}
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep ci
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+This workflow:
+- Runs on every push to `main` and every pull request
+- Skips scans triggered by Dependabot to avoid noisy automated PRs
+- Uses the official `semgrep/semgrep` Docker image, so no installation step is needed
+- Calls `semgrep ci`, which automatically applies differential scanning on PRs
+
+## Setup
+
+<Steps>
+  <Step title="Add the workflow file">
+    Create `.github/workflows/semgrep.yml` in your repository with the content above.
+  </Step>
+  <Step title="Add the SEMGREP_APP_TOKEN secret">
+    The `SEMGREP_APP_TOKEN` authenticates Semgrep with the Semgrep AppSec Platform to fetch your configured rules and report findings.
+
+    1. Log in to [semgrep.dev](https://semgrep.dev/login) and go to **Settings** → **Tokens** → **API**.
+    2. Generate a new token and copy it.
+    3. In your GitHub repository, go to **Settings** → **Secrets and variables** → **Actions**.
+    4. Click **New repository secret**.
+    5. Set the name to `SEMGREP_APP_TOKEN` and paste your token as the value.
+    6. Click **Add secret**.
+  </Step>
+  <Step title="Open a pull request">
+    Push your workflow file and open a pull request. The **Semgrep Scan** check will appear in the PR checks list. Semgrep will only report findings introduced by the PR's diff.
+  </Step>
+</Steps>
+
+## Differential scanning on pull requests
+
+When you run `semgrep ci` on a pull request, Semgrep automatically compares the PR branch against the base branch and only reports findings that are new in the diff. This means:
+
+- Pre-existing issues in your codebase do not block PRs.
+- Only code changed in the PR is evaluated.
+- You get focused, actionable feedback on every change.
+
+Differential scanning is enabled automatically when `SEMGREP_APP_TOKEN` is set and the workflow is triggered by a `pull_request` event.
+
+## Failing the build on findings
+
+By default, `semgrep ci` exits with code `1` when findings are detected, which causes the workflow step to fail and blocks the PR from merging (if branch protection rules require passing checks).
+
+To make this behavior explicit or to fail on any finding severity, add the `--error` flag:
+
+```yaml
+- run: semgrep ci --error
+  env:
+    SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+To fail only on findings of a specific severity or higher, use `--severity`:
+
+```yaml
+- run: semgrep ci --severity ERROR
+  env:
+    SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+## Uploading SARIF results to GitHub Code Scanning
+
+You can upload Semgrep findings to [GitHub Code Scanning](https://docs.github.com/en/code-security/code-scanning) so they appear in the **Security** tab of your repository.
+
+```yaml .github/workflows/semgrep.yml
+name: Semgrep
+
+on:
+  push:
+    branches: ["main"]
+  pull_request: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep and output SARIF
+        run: semgrep ci --sarif --output semgrep.sarif
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        continue-on-error: true
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+```
+
+<Note>
+  The `security-events: write` permission is required for the `github/codeql-action/upload-sarif` action. The `continue-on-error: true` flag on the scan step ensures the SARIF upload happens even when Semgrep finds issues.
+</Note>
+
+## Running without the AppSec Platform
+
+If you do not have a Semgrep AppSec Platform account, you can run Semgrep with community rules directly:
+
+```yaml
+- run: semgrep scan --config=auto --error .
+```
+
+This uses the `auto` configuration, which selects rules appropriate for the languages detected in your repository. Findings are printed to the workflow log but are not reported to the Semgrep AppSec Platform.
+
+## Further reading
+
+- [CI/CD scanning guide](/scanning/ci-cd) — General documentation for running Semgrep in CI/CD pipelines
+- [CLI reference: semgrep ci](/cli/ci) — All flags and options for the `semgrep ci` command
+- [SARIF output format](/cli/output/sarif) — Details on the SARIF output format

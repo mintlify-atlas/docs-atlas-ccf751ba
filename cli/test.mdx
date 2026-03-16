@@ -1,0 +1,134 @@
+---
+title: "semgrep test"
+description: "Test Semgrep rules using annotated test files."
+---
+
+`semgrep test` runs the Semgrep rule testing framework. It scans test files that use inline annotations to declare where findings are expected, then reports whether the rule produced those findings.
+
+```bash
+semgrep test [OPTIONS] [PATHS...]
+```
+
+If `PATHS` is a directory, Semgrep looks for pairs of rule files (`.yaml`) and test files with matching names.
+
+## Test annotations
+
+Annotations are inline comments in the test file that tell Semgrep what to expect on the following line (or the current line for some editors).
+
+| Annotation | Meaning |
+|------------|---------|
+| `# ruleid: <rule-id>` | A finding from `<rule-id>` is expected here (true positive). Test fails if the rule does not match. |
+| `# ok: <rule-id>` | No finding from `<rule-id>` is expected here (true negative). Test fails if the rule matches. |
+| `# todoruleid: <rule-id>` | A known false negative — the rule should match here but does not yet. Test passes as a reminder, not a failure. |
+| `# todook: <rule-id>` | A known false positive — the rule matches here but should not. Test passes as a reminder, not a failure. |
+
+Annotations support all common comment syntaxes: `#`, `//`, `<!--`, `(*`.
+
+### Example test file
+
+```python test_sqli.py
+import sqlite3
+
+def get_user_safe(conn, user_id):
+    # ok: python.lang.security.audit.sqli
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+
+def get_user_unsafe(conn, username):
+    # ruleid: python.lang.security.audit.sqli
+    cursor.execute("SELECT * FROM users WHERE name = '" + username + "'")
+
+def get_user_future(conn, username):
+    # todoruleid: python.lang.security.audit.sqli
+    cursor.execute("SELECT * FROM users WHERE name = %s" % username)
+```
+
+### Matching rule file
+
+```yaml python.lang.security.audit.sqli.yaml
+rules:
+  - id: python.lang.security.audit.sqli
+    patterns:
+      - pattern: $CURSOR.execute($QUERY + ...)
+    message: Possible SQL injection via string concatenation.
+    languages: [python]
+    severity: ERROR
+```
+
+## Flags
+
+<ParamField path="--config" type="string">
+  Path to the rule file or directory to test. If omitted, Semgrep discovers rule/test pairs in `PATHS`.
+</ParamField>
+
+<ParamField path="--test-ignore-todo" type="boolean">
+  Treat `todoruleid` and `todook` annotations as failures instead of reminders. Use this to enforce that all known issues are resolved.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output test results as JSON instead of the default human-readable format.
+</ParamField>
+
+<ParamField path="--strict" type="boolean">
+  Exit with a non-zero code on any errors, including warnings.
+</ParamField>
+
+## Running tests
+
+```bash
+# Test a single rule against its test file
+semgrep test --config=rules/sqli.yaml tests/
+
+# Test all rules in a directory
+# Semgrep auto-pairs *.yaml rules with matching test files
+semgrep test rules/
+
+# Enforce that all todo annotations are resolved
+semgrep test --test-ignore-todo rules/
+
+# Output results as JSON
+semgrep test --json rules/
+```
+
+## Example output
+
+When all tests pass:
+
+```text
+1/1 rules passed
+No issues found.
+```
+
+When a test fails:
+
+```text
+0/1 rules passed
+
+Failed tests:
+  python.lang.security.audit.sqli
+    test_sqli.py:9
+      Expected finding (ruleid) but no match was produced.
+```
+
+## File naming conventions
+
+Semgrep uses these conventions to match rule files with test files:
+
+- Rule file: `rules/my-rule.yaml`
+- Test file: `tests/my-rule.py` (or any supported language extension)
+
+Placing both in the same directory also works:
+
+```text
+rules/
+  sqli.yaml          # rule
+  sqli.py            # test file
+```
+
+## Integrating with CI
+
+You can run your rule tests in CI to catch regressions:
+
+```yaml GitHub Actions
+- name: Test custom rules
+  run: semgrep test rules/
+```

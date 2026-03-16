@@ -1,0 +1,228 @@
+---
+title: "Taint analysis"
+description: "Use Semgrep's taint analysis mode to track untrusted data from sources through sanitizers to dangerous sinks."
+---
+
+Taint analysis tracks the flow of untrusted data through your code. Instead of matching a single pattern at a point in time, taint rules find paths from **sources** (where untrusted data enters) to **sinks** (where untrusted data is dangerous), optionally taking **sanitizers** and **propagators** into account.
+
+To enable taint analysis, set `mode: taint` in your rule.
+
+## How taint analysis works
+
+```mermaid
+flowchart LR
+    A[Source\ne.g. request.GET] --> B{Propagates\nthrough code}
+    B --> C{Sanitizer?}
+    C -->|No| D[Sink\ne.g. execute()]
+    C -->|Yes| E[Finding suppressed]
+    D --> F[Finding reported]
+```
+
+1. Semgrep marks any value that matches `pattern-sources` as **tainted**.
+2. Taint propagates through assignments, function calls, and data structures.
+3. If tainted data reaches a `pattern-sinks` match without passing through a `pattern-sanitizers` match, Semgrep reports a finding.
+
+## Taint rule fields
+
+<ParamField path="pattern-sources" type="list" required>
+  Patterns that identify where untrusted data enters the program. Any value that matches a source pattern is tagged as tainted.
+
+  ```yaml
+  pattern-sources:
+    - pattern: request.GET.get($KEY)
+    - pattern: request.POST.get($KEY)
+    - pattern: request.COOKIES.get($KEY)
+  ```
+</ParamField>
+
+<ParamField path="pattern-sinks" type="list" required>
+  Patterns that identify dangerous operations. A finding is reported when tainted data reaches a sink.
+
+  ```yaml
+  pattern-sinks:
+    - pattern: cursor.execute($QUERY)
+    - pattern: $DB.raw($QUERY)
+  ```
+</ParamField>
+
+<ParamField path="pattern-sanitizers" type="list">
+  Patterns that mark data as safe. If tainted data passes through a sanitizer, it is no longer considered tainted.
+
+  ```yaml
+  pattern-sanitizers:
+    - pattern: escape($INPUT)
+    - pattern: bleach.clean($INPUT)
+    - pattern: markupsafe.escape($INPUT)
+  ```
+</ParamField>
+
+<ParamField path="pattern-propagators" type="list">
+  Patterns for operations that transfer taint from one variable to another when the default propagation model is insufficient. Each propagator requires `from` and `to` fields naming the metavariables.
+
+  ```yaml
+  pattern-propagators:
+    - pattern: $TO.append($FROM)
+      from: $FROM
+      to: $TO
+    - pattern: $MAP[$KEY] = $FROM
+      from: $FROM
+      to: $MAP
+  ```
+</ParamField>
+
+## Complete examples
+
+<Tabs>
+  <Tab title="Python: SQL injection">
+
+```yaml
+rules:
+  - id: python-django-sqli
+    mode: taint
+    pattern-sources:
+      - pattern: request.GET.get($KEY)
+      - pattern: request.POST.get($KEY)
+      - pattern: request.COOKIES.get($KEY)
+    pattern-sanitizers:
+      - pattern: int($INPUT)
+      - pattern: $INPUT.isdigit()
+    pattern-sinks:
+      - pattern: cursor.execute($QUERY)
+      - pattern: $MODEL.objects.raw($QUERY)
+      - pattern: $MODEL.objects.extra(where=[$QUERY])
+    message: >
+      User-controlled data flows into a raw SQL query. Use Django's
+      parameterized query API instead.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      category: security
+      technology: [django]
+```
+
+  </Tab>
+  <Tab title="JavaScript: XSS">
+
+```yaml
+rules:
+  - id: js-xss-innerhtml
+    mode: taint
+    pattern-sources:
+      - pattern: location.search
+      - pattern: location.hash
+      - pattern: document.URL
+      - pattern: document.referrer
+    pattern-sanitizers:
+      - pattern: DOMPurify.sanitize($INPUT)
+      - pattern: encodeURIComponent($INPUT)
+      - pattern: encodeHTML($INPUT)
+    pattern-sinks:
+      - pattern: $EL.innerHTML = $DATA
+      - pattern: $EL.outerHTML = $DATA
+      - pattern: document.write($DATA)
+    message: >
+      User-controlled data assigned to innerHTML without sanitization
+      can allow cross-site scripting (XSS).
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      category: security
+```
+
+  </Tab>
+</Tabs>
+
+## `by-side-effect` for sources and sinks
+
+By default, when a source pattern like `source($X)` matches, Semgrep considers the return value of the call as tainted. If the source instead taints its argument by side-effect (e.g., `read_into(&buffer, ...)`), set `by-side-effect: true`:
+
+```yaml
+pattern-sources:
+  - pattern: read_tainted_data($BUF)
+    by-side-effect: true
+```
+
+For sinks, `by-side-effect: only` reports a finding only when the argument is tainted as a side-effect target, not when it is the return value:
+
+```yaml
+pattern-sinks:
+  - pattern: dangerous_write($BUF)
+    by-side-effect: only
+```
+
+## Taint options
+
+Configure taint behavior with the `options` field:
+
+```yaml
+options:
+  taint_assume_safe_functions: true
+  taint_assume_safe_indexes: true
+```
+
+### `taint_assume_safe_functions`
+
+Default: `false`.
+
+When `true`, Semgrep assumes that any function call not explicitly listed as a source or propagator does **not** propagate taint. This reduces false positives in codebases with many helper functions but may miss flows through unknown wrappers.
+
+### `taint_assume_safe_indexes`
+
+Default: `false`.
+
+When `true`, Semgrep assumes that subscript operations (e.g., `my_dict[key]`, `my_list[i]`) do not propagate taint. Useful when your code accesses well-known safe keys from a tainted dict.
+
+### `taint_assume_safe_booleans` and `taint_assume_safe_numbers`
+
+Default: `false`.
+
+When `true`, boolean and numeric values respectively are not considered tainted even if derived from a tainted source. Helpful for reducing false positives on comparisons and counters.
+
+## Dataflow traces
+
+Run Semgrep with `--dataflow-traces` to include the full taint propagation path in the output. Each finding will show a chain of source → intermediate assignments → sink:
+
+```bash
+semgrep --config rules/taint.yaml --dataflow-traces src/
+```
+
+This produces output like:
+
+```
+src/views.py
+  rule: python-django-sqli
+    Taint flows to line 42.
+    Taint comes from:
+      src/views.py:35: user_id = request.GET.get('id')
+    Taint propagates through:
+      src/views.py:39: query = "SELECT * FROM users WHERE id = " + user_id
+    Taint reaches sink:
+      src/views.py:42: cursor.execute(query)
+```
+
+## Taint labels (advanced)
+
+For complex multi-step taint scenarios, you can assign labels to taint sources and require specific label combinations at sinks:
+
+```yaml
+rules:
+  - id: multi-label-taint
+    mode: taint
+    pattern-sources:
+      - pattern: get_user_input()
+        label: USER_INPUT
+      - pattern: get_env_var($NAME)
+        label: ENV_VAR
+    pattern-sinks:
+      - pattern: dangerous_sink($DATA)
+        requires: USER_INPUT or ENV_VAR
+    message: Tainted data from user input or environment reaches dangerous_sink.
+    severity: ERROR
+    languages: [python]
+```

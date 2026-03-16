@@ -1,0 +1,312 @@
+---
+title: "Pattern operators"
+description: "Complete reference for all Semgrep pattern-level operators, including how to combine them with AND and OR logic."
+---
+
+Semgrep rules express search logic through pattern operators. A single `pattern` field performs a straightforward match, while `patterns` and `pattern-either` let you combine operators with AND and OR logic respectively.
+
+## AND logic with `patterns`
+
+When you list operators inside `patterns`, all of them must be satisfied simultaneously for a match to be reported:
+
+```yaml
+patterns:
+  - pattern: $FUNC($INPUT)           # $FUNC is called with $INPUT
+  - pattern-not: $FUNC(escape($INPUT))  # ...but $INPUT is NOT escaped
+  - metavariable-regex:
+      metavariable: $FUNC
+      regex: ^(exec|system|popen)$   # ...and $FUNC is a dangerous function
+```
+
+## Operators
+
+<AccordionGroup>
+
+<Accordion title="pattern">
+
+Matches code that is structurally equivalent to the given pattern. Use `$X` for metavariables (match any expression and bind it to `$X`) and `...` for ellipsis (match any sequence of arguments or statements).
+
+```yaml
+rules:
+  - id: subprocess-shell-true
+    pattern: subprocess.run($CMD, shell=True, ...)
+    message: Running $CMD with shell=True is dangerous.
+    severity: WARNING
+    languages: [python]
+```
+
+Metavariables that start with `$...` (e.g., `$...ARGS`) capture zero or more items in a list.
+
+```yaml
+pattern: print($...ARGS)
+```
+
+</Accordion>
+
+<Accordion title="pattern-not">
+
+Excludes matches of the given pattern. Must appear inside `patterns` alongside at least one positive operator (`pattern`, `pattern-inside`, or `pattern-either`).
+
+```yaml
+rules:
+  - id: md5-not-for-passwords
+    patterns:
+      - pattern: hashlib.md5($DATA)
+      - pattern-not: hashlib.md5($DATA)  # would cancel itself — use with distinct positive/negative
+    message: MD5 is not suitable for security use.
+    severity: WARNING
+    languages: [python]
+```
+
+A practical example — flag `exec()` unless the argument is a known safe constant:
+
+```yaml
+patterns:
+  - pattern: exec($CMD)
+  - pattern-not: exec("safe_command")
+```
+
+</Accordion>
+
+<Accordion title="pattern-inside">
+
+Restricts matches to code that occurs inside the given enclosing pattern. Useful for finding patterns only within specific contexts such as certain function bodies or conditional blocks.
+
+```yaml
+rules:
+  - id: assert-in-production-code
+    patterns:
+      - pattern: assert $COND
+      - pattern-inside: |
+          def $FUNC(...):
+              ...
+    message: Avoid using assert in production code; use explicit error handling.
+    severity: WARNING
+    languages: [python]
+```
+
+</Accordion>
+
+<Accordion title="pattern-not-inside">
+
+Excludes matches that occur inside the given enclosing pattern. The opposite of `pattern-inside`. Use this to skip safe usages wrapped in a particular context.
+
+```yaml
+rules:
+  - id: raw-sql-outside-safe-wrapper
+    patterns:
+      - pattern: db.execute($QUERY)
+      - pattern-not-inside: |
+          with transaction():
+              ...
+    message: Raw SQL executed outside a transaction block.
+    severity: WARNING
+    languages: [python]
+```
+
+</Accordion>
+
+<Accordion title="pattern-either">
+
+OR logic — reports a match if any pattern in the list matches. Can be used at the top level or nested inside `patterns`.
+
+```yaml
+rules:
+  - id: dangerous-deserialization
+    pattern-either:
+      - pattern: pickle.loads($DATA)
+      - pattern: yaml.load($DATA)
+      - pattern: marshal.loads($DATA)
+    message: Deserializing untrusted data with $DATA can lead to remote code execution.
+    severity: ERROR
+    languages: [python]
+```
+
+Nested inside `patterns`:
+
+```yaml
+patterns:
+  - pattern-either:
+      - pattern: request.GET.get($KEY)
+      - pattern: request.POST.get($KEY)
+  - pattern-not-inside: sanitize(...)
+```
+
+</Accordion>
+
+<Accordion title="pattern-regex">
+
+Matches using a PCRE-compatible regular expression against the raw source text of a code region. Useful for string-level checks such as secrets detection or hardcoded values.
+
+```yaml
+rules:
+  - id: aws-access-key
+    pattern-regex: 'AKIA[0-9A-Z]{16}'
+    message: Possible AWS access key found.
+    severity: ERROR
+    languages: [generic]
+```
+
+Can also be combined inside `patterns` to add a regex constraint on top of a structural pattern:
+
+```yaml
+patterns:
+  - pattern: token = "$VALUE"
+  - pattern-regex: 'ghp_[A-Za-z0-9]{36}'
+```
+
+</Accordion>
+
+<Accordion title="pattern-not-regex">
+
+Excludes matches where the source text matches the given regular expression. Must appear inside `patterns`.
+
+```yaml
+rules:
+  - id: no-localhost-in-prod-url
+    patterns:
+      - pattern: url = "$URL"
+      - pattern-not-regex: 'localhost|127\.0\.0\.1'
+    message: Production URL $URL should not be hardcoded.
+    severity: WARNING
+    languages: [python]
+```
+
+</Accordion>
+
+<Accordion title="metavariable-regex">
+
+Filters matches by applying a regular expression to the text captured by a metavariable. Place inside `patterns`.
+
+```yaml
+rules:
+  - id: weak-hash-algorithm
+    patterns:
+      - pattern: hashlib.$ALGO($DATA)
+      - metavariable-regex:
+          metavariable: $ALGO
+          regex: ^(md5|sha1)$
+    message: $ALGO is considered weak; use sha256 or stronger.
+    severity: WARNING
+    languages: [python]
+```
+
+</Accordion>
+
+<Accordion title="metavariable-pattern">
+
+Applies a sub-rule (with its own pattern operators and optional `language`) to the code captured by a metavariable. This lets you write nested pattern logic.
+
+```yaml
+rules:
+  - id: sql-in-format-string
+    patterns:
+      - pattern: db.execute($QUERY)
+      - metavariable-pattern:
+          metavariable: $QUERY
+          patterns:
+            - pattern-regex: '(SELECT|INSERT|UPDATE|DELETE).*%s'
+    message: SQL query $QUERY uses %-formatting; use parameterized queries.
+    severity: ERROR
+    languages: [python]
+```
+
+You can specify a different `language` to parse the metavariable value in a different language:
+
+```yaml
+metavariable-pattern:
+  metavariable: $TEMPLATE
+  language: html
+  patterns:
+    - pattern: <script>...</script>
+```
+
+</Accordion>
+
+<Accordion title="metavariable-comparison">
+
+Filters matches by comparing metavariable values using a Python-like expression. Supports numeric comparisons, string comparisons, and boolean operators.
+
+```yaml
+rules:
+  - id: short-rsa-key
+    patterns:
+      - pattern: RSA.generate($BITS)
+      - metavariable-comparison:
+          metavariable: $BITS
+          comparison: $BITS < 2048
+    message: RSA key size $BITS is below the recommended minimum of 2048 bits.
+    severity: ERROR
+    languages: [python]
+```
+
+The `comparison` expression must evaluate to a boolean. You can reference multiple metavariables:
+
+```yaml
+metavariable-comparison:
+  metavariable: $TIMEOUT
+  comparison: $TIMEOUT > 0 and $TIMEOUT < 30
+```
+
+</Accordion>
+
+<Accordion title="metavariable-type">
+
+Filters matches by the inferred type of a metavariable. Useful in typed languages (Java, TypeScript, Go) where you want to match only when a value has a specific type.
+
+```yaml
+rules:
+  - id: string-to-sql-sink
+    patterns:
+      - pattern: conn.execute($QUERY)
+      - metavariable-type:
+          metavariable: $QUERY
+          types:
+            - str
+    message: Passing a raw string to execute() may allow SQL injection.
+    severity: ERROR
+    languages: [python]
+```
+
+For Java:
+
+```yaml
+patterns:
+  - pattern: $OBJ.executeQuery($QUERY)
+  - metavariable-type:
+      metavariable: $QUERY
+      types:
+        - String
+```
+
+</Accordion>
+
+<Accordion title="focus-metavariable">
+
+Changes the reported code location to where a specific metavariable matched, rather than the entire pattern match. This is useful when the full match is a large expression but the finding should highlight only the dangerous sub-expression.
+
+```yaml
+rules:
+  - id: unvalidated-redirect-target
+    patterns:
+      - pattern: redirect($URL)
+      - pattern-not: redirect(url_for(...))
+      - focus-metavariable: $URL
+    message: Redirecting to $URL without validation may allow open redirect attacks.
+    severity: WARNING
+    languages: [python]
+```
+
+Without `focus-metavariable`, the finding highlights the entire `redirect(...)` call. With it, the finding highlights only `$URL`.
+
+See [focus-metavariable](/rules/focus-metavariable) for detailed guidance.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Operator nesting rules
+
+- `pattern-not`, `pattern-inside`, `pattern-not-inside`, `metavariable-*`, and `focus-metavariable` must appear inside `patterns`.
+- `pattern-either` can appear at the top level or nested inside `patterns`.
+- `patterns` can be nested recursively inside `metavariable-pattern` or `pattern-either`.

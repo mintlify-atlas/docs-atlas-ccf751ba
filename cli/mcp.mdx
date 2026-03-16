@@ -1,0 +1,98 @@
+---
+title: "semgrep mcp"
+description: "Start the Semgrep MCP server so AI coding agents can call Semgrep as a tool."
+---
+
+`semgrep mcp` starts a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that exposes Semgrep capabilities to AI coding agents such as Claude, Cursor, and Windsurf.
+
+```bash
+semgrep mcp [OPTIONS]
+```
+
+## Flags
+
+<ParamField path="-t, --transport" type="string" default="stdio">
+  Transport protocol for the MCP server. Options:
+
+  - `stdio` (default): Reads from stdin and writes to stdout. Use this with agents that launch the server as a subprocess.
+  - `streamable-http`: Starts an HTTP server. Use this when an agent connects over the network.
+
+  Set with `MCP_TRANSPORT` environment variable.
+</ParamField>
+
+<ParamField path="-p, --port" type="integer" default="8000">
+  Port for the HTTP server when `--transport=streamable-http`.
+
+  Set with `SEMGREP_MCP_PORT` environment variable.
+</ParamField>
+
+<ParamField path="-a, --agent" type="string" default="claude">
+  The agent type connecting to the server. Options: `claude`, `cursor`, `windsurf`.
+
+  This controls agent-specific behavior and hook integration.
+</ParamField>
+
+<ParamField path="-k, --hook" type="string">
+  Run a specific agent hook instead of starting the full server. Options:
+
+  - `post-tool-cli-scan`: Run a Semgrep CLI scan as a PostTool hook.
+  - `stop-cli-scan`: Run a Semgrep CLI scan as a Stop hook (requires pairing with `record-file-edit`).
+  - `record-file-edit`: Record file edits for use with the Stop hook.
+  - `inject-secure-defaults`: Inject secure coding defaults context via UserPromptSubmit or SessionStart hook.
+  - `inject-secure-defaults-short`: Inject a short version of the secure defaults context.
+</ParamField>
+
+<ParamField path="-v, --version" type="boolean">
+  Print the version and exit.
+</ParamField>
+
+## Transport modes
+
+### stdio (default)
+
+In stdio mode, the MCP server reads JSON-RPC messages from stdin and writes responses to stdout. Your MCP client launches `semgrep mcp` as a subprocess and communicates through its standard streams.
+
+```bash
+# Start in stdio mode (default)
+semgrep mcp
+semgrep mcp --transport stdio
+```
+
+Configure your MCP client to launch the server as a subprocess. Example configuration for Claude Desktop (`~/.config/claude/claude_desktop_config.json`):
+
+```json claude_desktop_config.json
+{
+  "mcpServers": {
+    "semgrep": {
+      "command": "semgrep",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### streamable-http
+
+In streamable-http mode, the server listens on a local HTTP port. This is useful when the agent and server run in different processes or containers.
+
+```bash
+# Start HTTP server on default port 8000
+semgrep mcp --transport streamable-http
+
+# Start on a custom port
+semgrep mcp --transport streamable-http --port 9000
+```
+
+The server runs at `http://localhost:8000` (or whichever port you configured). DNS rebinding protection is enabled by default; the server only accepts connections from `127.0.0.1` and `localhost`.
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `MCP_TRANSPORT` | Default transport (`stdio` or `streamable-http`). |
+| `SEMGREP_MCP_PORT` | Default port for `streamable-http` transport. |
+| `SEMGREP_APP_TOKEN` | Authenticates the MCP server with Semgrep AppSec Platform. |
+
+## More information
+
+For integration instructions per agent (Claude, Cursor, Windsurf) and a full list of available MCP tools, see the [MCP Server integration guide](/integrations/mcp-server).

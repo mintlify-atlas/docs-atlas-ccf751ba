@@ -1,0 +1,169 @@
+---
+title: "Installation"
+description: "Install Semgrep on macOS, Linux, Windows, or via Docker."
+---
+
+## Requirements
+
+- **Python 3.10 or later** is required when installing via pip.
+- Homebrew and Docker installations bundle their own runtimes — no Python required.
+- Semgrep supports macOS, Linux, Windows (via WSL or pip), and any platform that runs Docker.
+
+## Install Semgrep
+
+<Tabs>
+  <Tab title="macOS">
+    Install Semgrep using Homebrew:
+
+    ```bash
+    brew install semgrep
+    ```
+
+    Homebrew installs a self-contained binary. Python is not required.
+
+    **Verify the installation:**
+
+    ```bash
+    semgrep --version
+    ```
+
+    **Upgrade:**
+
+    ```bash
+    brew upgrade semgrep
+    ```
+  </Tab>
+
+  <Tab title="Linux / WSL">
+    Install Semgrep using pip:
+
+    ```bash
+    python3 -m pip install semgrep
+    ```
+
+    If your system Python is older than 3.10, use [pyenv](https://github.com/pyenv/pyenv)
+    or a tool like `uv` to manage Python versions.
+
+    **Verify the installation:**
+
+    ```bash
+    semgrep --version
+    ```
+
+    **Upgrade:**
+
+    ```bash
+    python3 -m pip install --upgrade semgrep
+    ```
+  </Tab>
+
+  <Tab title="Windows">
+    <Note>
+      Native Windows support is available but best-effort. For the most reliable
+      experience on Windows, use [WSL (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install)
+      and follow the Linux/WSL instructions, or use Docker.
+    </Note>
+
+    Install Semgrep using pip in a Command Prompt or PowerShell window:
+
+    ```powershell
+    pip install semgrep
+    ```
+
+    Python 3.10 or later must be installed and available on your `PATH`.
+    Download Python from [python.org](https://www.python.org/downloads/).
+
+    **Verify the installation:**
+
+    ```powershell
+    semgrep --version
+    ```
+
+    **Upgrade:**
+
+    ```powershell
+    pip install --upgrade semgrep
+    ```
+  </Tab>
+
+  <Tab title="Docker">
+    Pull the official Semgrep image from Docker Hub:
+
+    ```bash
+    docker pull semgrep/semgrep:latest
+    ```
+
+    Run a scan by mounting your source directory into the container:
+
+    ```bash
+    docker run --rm -v "${PWD}:/src" semgrep/semgrep semgrep --config=auto .
+    ```
+
+    The `semgrep/semgrep` image is published on [Docker Hub](https://hub.docker.com/r/semgrep/semgrep).
+    Pinning to a specific version is recommended for reproducible CI scans:
+
+    ```bash
+    docker pull semgrep/semgrep:1.155.0
+    ```
+
+    **Upgrade:**
+
+    ```bash
+    docker pull semgrep/semgrep:latest
+    ```
+
+    <Tip>
+      In CI environments, pin the Docker image tag to a specific version to
+      avoid unexpected behavior from automatic updates.
+    </Tip>
+  </Tab>
+</Tabs>
+
+## Verify the installation
+
+After installing, confirm Semgrep is working:
+
+```bash
+semgrep --version
+```
+
+Then run a quick test scan against the current directory:
+
+```bash
+semgrep --config=auto .
+```
+
+## Environment variables
+
+Semgrep reads the following environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `SEMGREP_APP_TOKEN` | Authentication token for the Semgrep AppSec Platform. Used in CI environments instead of running `semgrep login` interactively. |
+| `SEMGREP_SEND_METRICS` | Controls metric reporting. Accepts `auto` (default), `on`, or `off`. |
+| `SEMGREP_BASELINE_COMMIT` | Git commit or ref used as the baseline when running differential scans. |
+
+**Using `SEMGREP_APP_TOKEN` in CI:**
+
+```bash
+export SEMGREP_APP_TOKEN=<your-token>
+semgrep ci
+```
+
+Or with Docker:
+
+```bash
+docker run --rm \
+  -e SEMGREP_APP_TOKEN=<your-token> \
+  -v "${PWD}:/src" \
+  semgrep/semgrep semgrep ci
+```
+
+To get a token, run `semgrep login` locally or create one in the
+[Semgrep AppSec Platform](https://semgrep.dev) under **Settings > Tokens**.
+
+## Next steps
+
+- [Quickstart](/quickstart) — Run your first scan and interpret the output.
+- [CLI reference](/cli/overview) — Full reference for all Semgrep commands and flags.
+- [Running scans in CI/CD](/scanning/ci-cd) — Set up Semgrep in GitHub Actions, GitLab CI, and more.

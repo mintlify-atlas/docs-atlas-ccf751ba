@@ -1,0 +1,173 @@
+---
+title: "Writing rules"
+description: "Learn how to write custom Semgrep rules using the YAML-based rule format. This guide walks you through your first rule, testing, and validation."
+keywords: ["semgrep rules", "custom rules", "YAML rules", "rule authoring"]
+---
+
+Semgrep rules are YAML files that describe code patterns to search for. They look like the code you already write — no abstract syntax trees, regex wrestling, or painful DSLs required.
+
+A rule tells Semgrep:
+- **what to find** — expressed as one or more patterns
+- **where to find it** — the target programming languages
+- **what to say** — a message surfaced to developers
+- **how severe it is** — a severity level for triage
+
+## Anatomy of a rule
+
+Every Semgrep rule lives under a `rules:` list in a YAML file. Here is a complete, annotated rule:
+
+```yaml
+rules:
+  - id: use-parameterized-query        # Unique identifier for the rule
+    message: >                          # Message shown to developers when the rule fires
+      Detected string concatenation into a SQL query. Use a
+      parameterized query or prepared statement instead.
+    severity: ERROR                     # ERROR | WARNING | INFO
+    languages: [python]                 # One or more language identifiers
+    metadata:                           # Optional: arbitrary key-value pairs
+      cwe: "CWE-89: SQL Injection"
+      owasp: "A03:2021 - Injection"
+      author: security-team
+    patterns:                           # Matching logic (AND of all patterns)
+      - pattern: $QUERY = $PREFIX + $INPUT
+      - pattern-inside: |
+          def $FUNC(...):
+            ...
+            cursor.execute(...)
+            ...
+      - pattern-not: $QUERY = $PREFIX + "..."
+    fix: "cursor.execute($QUERY, params)" # Optional: autofix string
+    paths:                              # Optional: path-based scoping
+      include:
+        - "*.py"
+      exclude:
+        - "tests/"
+```
+
+## Writing your first rule
+
+<Steps>
+  <Step title="Create a YAML file">
+    Create a file named `my-rules.yaml`. Every Semgrep rule file starts with a `rules:` key:
+
+    ```yaml
+    rules:
+      - id: print-statement
+        message: "Found a print statement. Use logging instead."
+        severity: WARNING
+        languages: [python]
+        pattern: print(...)
+    ```
+
+    This rule matches any call to `print()` with any arguments.
+  </Step>
+
+  <Step title="Run the rule against your code">
+    Point Semgrep at your rule file and a target directory:
+
+    ```bash
+    semgrep --config my-rules.yaml path/to/code/
+    ```
+
+    Semgrep prints each match with the file path, line number, and your message.
+  </Step>
+
+  <Step title="Refine the pattern">
+    Use metavariables and operators to make the pattern more specific. For example, to only flag `print` calls that receive a concatenated string:
+
+    ```yaml
+    rules:
+      - id: print-concatenation
+        message: "Avoid printing concatenated strings; use f-strings or logging."
+        severity: WARNING
+        languages: [python]
+        pattern: print($A + $B)
+    ```
+
+    Metavariables like `$A` and `$B` match any expression and can be reused in the `message` or `fix` fields.
+  </Step>
+
+  <Step title="Test the rule">
+    Add test annotations directly in your target code to assert expected behavior:
+
+    ```python
+    # ruleid: print-concatenation
+    print("hello " + name)
+
+    # ok: print-concatenation
+    print(f"hello {name}")
+    ```
+
+    Then run the test command:
+
+    ```bash
+    semgrep --test path/to/tests/
+    ```
+
+    Semgrep reports false positives (unexpected matches) and false negatives (missed matches).
+  </Step>
+
+  <Step title="Validate the rule">
+    Check that your rule file is syntactically valid before deploying it:
+
+    ```bash
+    semgrep validate --config my-rules.yaml
+    ```
+
+    Validation catches schema errors, unknown fields, and invalid pattern syntax without running a full scan.
+  </Step>
+</Steps>
+
+## Testing rules
+
+Semgrep has a built-in test framework. Place test files alongside your rule files and annotate expected results with inline comments:
+
+| Annotation | Meaning |
+|---|---|
+| `# ruleid: <id>` | Semgrep **must** report a finding on this line |
+| `# ok: <id>` | Semgrep **must not** report a finding on this line |
+| `# todoruleid: <id>` | Known false negative — finding is missing but expected to be fixed |
+| `# todook: <id>` | Known false positive — finding is reported but should eventually be suppressed |
+
+Run all tests in a directory:
+
+```bash
+semgrep --test rules/
+```
+
+Semgrep exits with a non-zero code if any test fails, making it easy to integrate into CI.
+
+## Validating rules
+
+The `semgrep validate` command checks rule files against the rule schema without running a scan:
+
+```bash
+# Validate a single file
+semgrep validate --config my-rules.yaml
+
+# Validate all rules in a directory
+semgrep validate --config rules/
+```
+
+Validation errors include specific YAML paths (e.g., `rules[0].severity`) to make them easy to locate.
+
+## Try rules interactively
+
+The [Semgrep Playground](https://semgrep.dev/editor) lets you write and test rules in your browser without installing anything. Paste a rule on the left, paste target code on the right, and see matches highlighted in real time.
+
+## Explore more
+
+<CardGroup cols={2}>
+  <Card title="Pattern syntax" icon="magnifying-glass" href="/writing-rules/pattern-syntax">
+    All pattern constructs: metavariables, ellipsis, typed patterns, regex, and deep expression matching
+  </Card>
+  <Card title="Rule syntax reference" icon="book" href="/writing-rules/rule-syntax">
+    Every rule field documented with types, defaults, and examples
+  </Card>
+  <Card title="Data-flow analysis" icon="arrow-right-arrow-left" href="/writing-rules/data-flow">
+    Track tainted data from sources to sinks with taint mode rules
+  </Card>
+  <Card title="Autofix" icon="wand-magic-sparkles" href="/writing-rules/autofix">
+    Automatically rewrite matched code with the `fix` and `fix-regex` fields
+  </Card>
+</CardGroup>

@@ -1,0 +1,249 @@
+---
+title: "Supported Languages"
+description: "Semgrep supports 30+ programming languages and file formats. Each language has an identifier you use in the languages field of a rule."
+keywords: ["supported languages", "language identifiers", "generic mode", "--lang", "language support"]
+---
+
+Semgrep supports 30+ programming languages and file formats. To target a specific language in a rule, use its identifier in the `languages` field. To target a specific language on the command line, use the `--lang` flag.
+
+## Language identifiers
+
+The tables below list every supported language, the identifier to use in rules or with `--lang`, and the parse support level.
+
+**Parse support levels:**
+
+- **Full** — Semgrep uses a language-specific parser (Tree-sitter or custom). Structural matching, metavariables, and all pattern operators are available.
+- **Partial** — Core language constructs are supported. Some less-common syntax may not parse.
+- **Generic** — No language-specific parser. Semgrep uses whitespace-aware (Spacegrep) or regex-based (Aliengrep) text matching. Structural operators like `pattern-inside` have limited semantics.
+
+### Systems and compiled languages
+
+| Language | Rule identifier | Parse support |
+|---|---|---|
+| Apex | `apex` | Full |
+| C | `c` | Full |
+| C++ | `cpp` | Full |
+| C# | `csharp` | Full |
+| Dart | `dart` | Full |
+| Go | `go` | Full |
+| Java | `java` | Full |
+| Kotlin | `kotlin` | Full |
+| Rust | `rust` | Full |
+| Scala | `scala` | Full |
+| Solidity | `solidity` | Full |
+| Swift | `swift` | Full |
+
+### Scripting and dynamic languages
+
+| Language | Rule identifier | Parse support |
+|---|---|---|
+| Bash | `bash` | Full |
+| Elixir | `elixir` | Full |
+| Julia | `julia` | Full |
+| Lua | `lua` | Full |
+| OCaml | `ocaml` | Full |
+| PHP | `php` | Full |
+| Python | `python` | Full |
+| R | `r` | Full |
+| Ruby | `ruby` | Full |
+
+### Web and JavaScript ecosystem
+
+| Language | Rule identifier | Parse support |
+|---|---|---|
+| JavaScript | `javascript` | Full |
+| JSX | `jsx` | Full |
+| TypeScript | `typescript` | Full |
+| TSX | `tsx` | Full |
+| HTML | `html` | Full |
+
+### Data and configuration formats
+
+| Language | Rule identifier | Parse support |
+|---|---|---|
+| Dockerfile | `dockerfile` | Full |
+| JSON | `json` | Full |
+| Jsonnet | `jsonnet` | Full |
+| Terraform / HCL | `terraform` | Full |
+| YAML | `yaml` | Full |
+| XML | `xml` | Full |
+
+### Functional and Lisp-family languages
+
+| Language | Rule identifier | Parse support |
+|---|---|---|
+| Clojure | `clojure` | Full |
+| Lisp | `lisp` | Full |
+| Scheme | `scheme` | Full |
+
+### Generic mode
+
+| Language | Rule identifier | Parse support |
+|---|---|---|
+| Generic | `generic` | Generic |
+
+## Using language identifiers in rules
+
+Specify one or more language identifiers in the `languages` field of a rule:
+
+```yaml
+rules:
+  - id: no-eval
+    pattern: eval($X)
+    message: Avoid eval() — it executes arbitrary code.
+    severity: ERROR
+    languages: [javascript]
+```
+
+To apply a rule to multiple languages, provide a list:
+
+```yaml
+languages: [javascript, typescript, jsx, tsx]
+```
+
+<Tip>
+When writing rules for JavaScript and TypeScript, include both `javascript` and `typescript` (and `jsx`/`tsx` if relevant) so the rule covers all file types in a typical web project.
+</Tip>
+
+## The `--lang` flag
+
+The `--lang` flag overrides language detection when running from the CLI. This is useful when scanning files with non-standard extensions or piping code through Semgrep:
+
+```bash
+# Scan a file as Python even if its extension is unusual
+semgrep --lang python --config my-rule.yaml script.py
+
+# Run an ad-hoc pattern against JavaScript files
+semgrep --lang javascript -e 'console.log(...)' src/
+
+# Scan all files in a directory as Go
+semgrep --lang go --config p/golang .
+```
+
+<Note>
+If you use `--lang`, Semgrep only scans files in the specified language and ignores rules whose `languages` field does not include that language.
+</Note>
+
+## Language detection
+
+By default, Semgrep detects each file's language based on its file extension. The mapping follows standard conventions:
+
+| Extension(s) | Detected language |
+|---|---|
+| `.py`, `.pyi` | Python |
+| `.js`, `.mjs`, `.cjs` | JavaScript |
+| `.ts`, `.mts` | TypeScript |
+| `.jsx` | JSX |
+| `.tsx` | TSX |
+| `.go` | Go |
+| `.java` | Java |
+| `.rb` | Ruby |
+| `.rs` | Rust |
+| `.php`, `.phtml` | PHP |
+| `.tf`, `.hcl` | Terraform |
+| `.yml`, `.yaml` | YAML |
+| `.json` | JSON |
+| `Dockerfile` | Dockerfile |
+| `.c`, `.h` | C |
+| `.cpp`, `.cc`, `.cxx`, `.hpp` | C++ |
+| `.cs` | C# |
+| `.kt`, `.kts` | Kotlin |
+| `.scala` | Scala |
+| `.swift` | Swift |
+| `.sh`, `.bash` | Bash |
+| `.ml`, `.mli` | OCaml |
+| `.lua` | Lua |
+| `.ex`, `.exs` | Elixir |
+| `.dart` | Dart |
+| `.sol` | Solidity |
+| `.xml` | XML |
+| `.html`, `.htm` | HTML |
+
+## Generic mode
+
+Generic mode lets you write Semgrep rules for languages that do not have a dedicated parser, or for any text-based file format.
+
+```yaml
+rules:
+  - id: no-todo-comments
+    pattern: "# TODO: ..."
+    message: Address TODO comment before merging.
+    severity: INFO
+    languages: [generic]
+```
+
+Generic mode has two engines, controlled by the `options.generic_engine` rule option:
+
+<Tabs>
+  <Tab title="Spacegrep (default)">
+    Spacegrep is the default generic engine. It performs whitespace-aware structural matching. The ellipsis `...` matches any content within the same indentation level.
+
+    ```yaml
+    rules:
+      - id: jinja-raw-block
+        pattern: "{% raw %} ... {% endraw %}"
+        message: Found a raw Jinja block.
+        severity: INFO
+        languages: [generic]
+    ```
+  </Tab>
+  <Tab title="Aliengrep">
+    Aliengrep uses regular expression-based matching with awareness of balanced brackets. Enable it with `options`:
+
+    ```yaml
+    rules:
+      - id: erb-output-tag
+        pattern: "<%= $X %>"
+        message: Found ERB output tag with $X.
+        severity: INFO
+        languages: [generic]
+        options:
+          generic_engine: aliengrep
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Generic mode does not parse code semantically. Metavariables match words or bracket-balanced tokens rather than AST nodes. Patterns like `pattern-inside` work on indentation structure (Spacegrep) or bracket depth (Aliengrep), not on language grammar.
+</Warning>
+
+## Multi-language rules
+
+Some patterns are valid across multiple languages with the same syntax. You can write a single rule that applies to several languages:
+
+<CodeGroup>
+
+```yaml javascript and TypeScript
+rules:
+  - id: no-weak-hash-js
+    pattern: crypto.createHash("md5")
+    message: MD5 is a weak hash algorithm. Use SHA-256 or stronger.
+    severity: ERROR
+    languages: [javascript, typescript]
+```
+
+```yaml Java and Kotlin
+rules:
+  - id: no-weak-hash-jvm
+    pattern: MessageDigest.getInstance("MD5")
+    message: MD5 is a weak hash algorithm. Use SHA-256 or stronger.
+    severity: ERROR
+    languages: [java, kotlin]
+```
+
+```yaml Python and Ruby
+rules:
+  - id: hardcoded-debug-true
+    pattern: DEBUG = True
+    message: DEBUG mode is enabled. Disable it before deploying to production.
+    severity: WARNING
+    languages: [python, ruby]
+```
+
+</CodeGroup>
+
+## Next steps
+
+- Learn about [Rules](/concepts/rules) and how the `languages` field fits into the full rule structure
+- See [Writing Rules](/writing-rules/overview) for advanced rule-writing techniques across languages
+- Browse the [Semgrep Registry](https://semgrep.dev/explore) for existing rules in your language

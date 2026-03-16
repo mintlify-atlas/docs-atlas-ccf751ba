@@ -1,0 +1,95 @@
+---
+title: "semgrep login"
+description: "Authenticate with Semgrep AppSec Platform to access Pro rules, Supply Chain scanning, and custom policies."
+---
+
+`semgrep login` authenticates your CLI with Semgrep AppSec Platform. After logging in:
+
+- `semgrep scan` uses Pro rules from the registry.
+- `semgrep ci` connects to the Platform to fetch your organization's policies and upload findings.
+- Supply Chain (SCA) and Secrets scanning become available with the Pro Engine.
+
+```bash
+semgrep login
+```
+
+## Flags
+
+<ParamField path="--force" type="boolean">
+  Ignore any saved login token and force the browser-based login flow. Use this to switch accounts.
+</ParamField>
+
+<ParamField path="--override-tty" type="boolean">
+  Allow login from a non-interactive terminal. Used by agents and tools (such as MCP clients) that launch `semgrep login` without a TTY.
+</ParamField>
+
+## Login flow
+
+<Steps>
+  <Step title="Run semgrep login">
+    ```bash
+    semgrep login
+    ```
+
+    Semgrep prints a URL and opens it in your browser.
+
+    ```text
+    Login enables additional proprietary Semgrep Registry rules and running
+    custom policies from Semgrep Cloud Platform.
+    Opening login at: https://semgrep.dev/login?cli-token=...
+
+    Once you've logged in, return here and you'll be ready to start using
+    new Semgrep rules.
+    ```
+  </Step>
+
+  <Step title="Authenticate in the browser">
+    Complete the login in the browser. Semgrep polls for up to 3 minutes waiting for you to finish.
+  </Step>
+
+  <Step title="Token is saved">
+    Once authentication succeeds, the token is saved to the Semgrep settings file:
+
+    ```text
+    Saved login token
+
+        <your-token>
+
+    in ~/.semgrep/settings.yml.
+    ```
+  </Step>
+</Steps>
+
+## Token file location
+
+Semgrep stores the token in `~/.semgrep/settings.yml`.
+
+```yaml
+# ~/.semgrep/settings.yml
+api_token: <your-token>
+```
+
+## Using SEMGREP_APP_TOKEN
+
+For non-interactive environments (CI pipelines, containers, automated agents), set the `SEMGREP_APP_TOKEN` environment variable instead of using the interactive login flow.
+
+```bash
+export SEMGREP_APP_TOKEN=your_token_here
+semgrep ci
+```
+
+When `SEMGREP_APP_TOKEN` is set and you run `semgrep login`, Semgrep saves that token to the settings file automatically without opening a browser.
+
+<Note>
+  You can generate tokens at `https://semgrep.dev/orgs/-/settings/tokens`.
+</Note>
+
+## semgrep logout
+
+`semgrep logout` removes the saved token from `~/.semgrep/settings.yml`.
+
+```bash
+semgrep logout
+```
+
+After logging out, `semgrep scan` uses only open-source rules and `semgrep ci` requires a `SEMGREP_APP_TOKEN` environment variable or `--config` flag to run.

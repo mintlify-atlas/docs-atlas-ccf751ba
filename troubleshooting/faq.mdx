@@ -1,0 +1,219 @@
+---
+title: "FAQ"
+description: "Answers to frequently asked questions about Semgrep."
+---
+
+<AccordionGroup>
+  <Accordion title="Is Semgrep free?">
+    Yes. Semgrep Community Edition is free and open source under the [LGPL-2.1 license](https://github.com/semgrep/semgrep/blob/develop/LICENSE). You can use it locally, in CI, and in any project without paying anything.
+
+    The [Semgrep AppSec Platform](https://semgrep.dev/login) adds a web dashboard, cross-file and cross-function analysis, AI-assisted triage, and team management features. It has both free and paid tiers.
+  </Accordion>
+
+  <Accordion title="Does Semgrep upload my code?">
+    No. Semgrep analyzes code locally on your machine or in your build environment. Source code is never sent to Semgrep's servers.
+
+    When metrics are enabled (see [Metrics and privacy](/configuration/metrics)), Semgrep sends aggregate statistics about the scan — things like rule performance and finding counts — but never the code itself, file paths, or finding content.
+
+    If you use `semgrep ci` while logged into the Semgrep AppSec Platform, Semgrep sends finding metadata (rule IDs, file locations, and one-way hashes of the matched code) to power your dashboard and notifications. Even in this case, the source code itself is not transmitted.
+  </Accordion>
+
+  <Accordion title="What is the difference between `semgrep scan` and `semgrep ci`?">
+    Both commands run a Semgrep scan, but they're designed for different contexts.
+
+    `semgrep scan` is the general-purpose scan command. Use it locally or in scripts when you want full control over configuration:
+
+    ```bash
+    semgrep scan --config=auto .
+    ```
+
+    `semgrep ci` is designed for CI/CD environments. When you're logged into the Semgrep AppSec Platform, it:
+
+    - Fetches rules and policies configured in your organization's dashboard
+    - Performs diff-aware scanning (reports only new findings in a PR, not pre-existing ones)
+    - Uploads findings to the platform for tracking, notifications, and triage
+    - Uses your `SEMGREP_APP_TOKEN` for authentication
+
+    ```bash
+    SEMGREP_APP_TOKEN=your-token semgrep ci
+    ```
+
+    You can run `semgrep ci` without logging in, but it behaves similarly to `semgrep scan` in that case.
+  </Accordion>
+
+  <Accordion title="How do I write a rule for language X?">
+    Semgrep rules are written in YAML and use patterns that look like the code you're targeting. Here's the general structure:
+
+    ```yaml
+    rules:
+      - id: my-rule-id
+        pattern: dangerous_function($ARG)
+        message: Avoid calling dangerous_function with untrusted input.
+        severity: WARNING
+        languages: [python]  # replace with your target language
+    ```
+
+    The best way to get started is the [Semgrep Playground](https://semgrep.dev/editor), which lets you write and test rules interactively with live feedback.
+
+    For a full reference of pattern syntax, metavariables, and rule fields, see [Pattern syntax](/writing-rules/pattern-syntax) and [Rule syntax](/writing-rules/rule-syntax).
+
+    Semgrep supports 30+ languages including Python, JavaScript, TypeScript, Go, Java, C, C++, Ruby, Rust, and more. See [Supported languages](/concepts/languages) for the full list.
+  </Accordion>
+
+  <Accordion title="Can Semgrep find all security vulnerabilities?">
+    No. Semgrep is a pattern-matching tool — it finds the patterns you define (or that the rules you use define). It is not a complete vulnerability scanner.
+
+    Semgrep Community Edition is well-suited for:
+
+    - Enforcing secure coding standards
+    - Finding known-bad patterns (hardcoded secrets, dangerous API usage)
+    - Catching common vulnerability classes within a single function or file
+
+    Semgrep Community Edition has limitations:
+
+    - It does not track data flow across function boundaries or files (cross-function and cross-file analysis requires the AppSec Platform)
+    - It only finds what rules are written to find — novel attack patterns may not be covered
+    - It produces false positives: findings that match the pattern but are not actual vulnerabilities
+
+    For comprehensive security coverage, combine Semgrep with other tools (dependency scanners, dynamic analysis, manual code review).
+  </Accordion>
+
+  <Accordion title="What is the difference between Community Edition and AppSec Platform?">
+    **Semgrep Community Edition** is the open-source core. It includes:
+
+    - The full scanning engine
+    - 2,000+ community rules from the Semgrep Registry
+    - All output formats (text, JSON, SARIF)
+    - CI/CD integration
+
+    **Semgrep AppSec Platform** adds:
+
+    - Cross-file and cross-function (interfile) analysis that reduces false positives and finds more true positives
+    - 20,000+ high-accuracy rules written and maintained by Semgrep's security research team
+    - Semgrep Supply Chain for reachable vulnerability detection in dependencies
+    - Semgrep Secrets for accurate secrets detection
+    - AI-assisted triage (Semgrep Assistant) that auto-triages findings and generates remediation guidance
+    - A web dashboard for managing findings, policies, and notifications across projects
+    - Diff-aware scanning in pull requests
+
+    Both editions analyze code locally — code is never uploaded.
+  </Accordion>
+
+  <Accordion title="How do I contribute rules to the registry?">
+    The Semgrep Registry is open to community contributions. To submit a rule:
+
+    <Steps>
+      <Step title="Write your rule">
+        Create a YAML rule file following the [rule syntax](/writing-rules/rule-syntax) guidelines. Test it with `semgrep --test`.
+      </Step>
+      <Step title="Check existing rules">
+        Search the [Semgrep Registry](https://semgrep.dev/explore) to make sure a similar rule doesn't already exist.
+      </Step>
+      <Step title="Open a pull request">
+        Submit your rule to the [semgrep-rules repository](https://github.com/semgrep/semgrep-rules) on GitHub. Include test cases and a clear description of what the rule detects.
+      </Step>
+    </Steps>
+
+    The Semgrep team reviews community submissions for quality, correctness, and test coverage before merging.
+  </Accordion>
+
+  <Accordion title="How do I suppress a finding I know is a false positive?">
+    You have two options depending on whether you want to suppress the finding in one place or everywhere.
+
+    **Suppress a single instance** with an inline comment:
+
+    ```python
+    result = eval(expression)  # nosemgrep: python.lang.security.audit.eval-detected
+    ```
+
+    Omit the rule ID to suppress all rules on that line:
+
+    ```python
+    result = eval(expression)  # nosemgrep
+    ```
+
+    **Suppress a rule for a set of paths** using the `paths:` field in the rule definition:
+
+    ```yaml
+    rules:
+      - id: no-eval
+        pattern: eval(...)
+        message: Avoid eval()
+        severity: WARNING
+        languages: [python]
+        paths:
+          exclude:
+            - tests/
+            - scripts/internal/
+    ```
+
+    For more details, see [Ignoring files and findings](/configuration/semgrepignore).
+  </Accordion>
+
+  <Accordion title="Can Semgrep fix code automatically?">
+    Yes. Semgrep supports autofix through the `fix:` field in a rule definition. When a fix is defined, running `semgrep --autofix` applies the fix directly to your files.
+
+    ```yaml
+    rules:
+      - id: use-https
+        pattern: http://$URL
+        fix: https://$URL
+        message: Use HTTPS instead of HTTP.
+        severity: WARNING
+        languages: [generic]
+    ```
+
+    Apply fixes:
+
+    ```bash
+    semgrep --config=myrule.yaml --autofix .
+    ```
+
+    To preview fixes without writing to disk, use `--dryrun`:
+
+    ```bash
+    semgrep --config=myrule.yaml --autofix --dryrun .
+    ```
+
+    For more information, see the [autofix documentation](/writing-rules/autofix).
+  </Accordion>
+
+  <Accordion title="How do I run Semgrep in a monorepo?">
+    Semgrep works in monorepos without special configuration. Run it from the repository root and Semgrep will scan all supported files recursively:
+
+    ```bash
+    semgrep --config=auto .
+    ```
+
+    For large monorepos, a few strategies help manage scope and performance:
+
+    **Scan a specific service or package:**
+
+    ```bash
+    semgrep --config=auto services/payments/
+    ```
+
+    **Use `.semgrepignore` to skip unrelated services or generated code:**
+
+    ```
+    # .semgrepignore
+    services/legacy-service/
+    generated/
+    **/dist/
+    ```
+
+    **Run language-specific rulesets per subdirectory in CI:**
+
+    ```bash
+    semgrep --config=p/python services/python-api/ &
+    semgrep --config=p/typescript services/frontend/ &
+    wait
+    ```
+
+    **Tune parallelism for large trees:**
+
+    ```bash
+    semgrep --config=auto -j 16 .
+    ```
+  </Accordion>
+</AccordionGroup>

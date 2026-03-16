@@ -1,0 +1,122 @@
+---
+title: "Supply Chain (SCA)"
+description: "Detect vulnerable open-source dependencies with Semgrep Supply Chain's reachability analysis."
+---
+
+Semgrep Supply Chain (SCA) identifies vulnerable open-source packages in your project's dependency tree. Unlike tools that simply list all packages with known CVEs, Supply Chain performs **reachability analysis**: it only flags vulnerabilities in code you actually call, dramatically reducing noise.
+
+<Note>
+Full Supply Chain scanning — including managed rulesets, reachability analysis, and the full package vulnerability database — requires logging in to the Semgrep AppSec Platform. Run `semgrep login` before scanning, or use `semgrep ci` in a connected CI environment.
+</Note>
+
+## How Supply Chain works
+
+<Steps>
+  <Step title="Parse lockfiles">
+    Semgrep reads your project's lockfiles (e.g., `package-lock.json`, `Pipfile.lock`, `Cargo.lock`) to build a complete list of direct and transitive dependencies with exact versions.
+  </Step>
+  <Step title="Match against the vulnerability database">
+    Each dependency version is checked against Semgrep's curated vulnerability database, which maps CVEs and security advisories to affected version ranges.
+  </Step>
+  <Step title="Reachability analysis">
+    For vulnerabilities with reachability rules, Semgrep scans your source code to determine whether you actually import and call the vulnerable function or API. Only reachable vulnerabilities are promoted to findings.
+  </Step>
+  <Step title="Report findings">
+    Reachable findings are reported with the call site in your code, the affected dependency, and the severity. Unreachable findings (present in lockfile but not called) are reported separately at a lower priority.
+  </Step>
+</Steps>
+
+## Reachable vs. unreachable findings
+
+| Finding type | Meaning | Priority |
+|---|---|---|
+| **Reachable** | Vulnerable package is present **and** your code calls the vulnerable function/API. | High — fix promptly. |
+| **Unreachable** | Vulnerable package is present but the vulnerable code path is not called. | Lower — upgrade when convenient. |
+| **Lockfile-only** | No reachability rule exists for this vulnerability; presence in lockfile is flagged. | Review against your risk tolerance. |
+
+## Running Supply Chain
+
+Run Supply Chain analysis as part of a full CI scan:
+
+```bash
+semgrep ci
+```
+
+To run locally with Supply Chain rules:
+
+```bash
+semgrep --config p/supply-chain .
+```
+
+To see only Supply Chain findings and suppress other rules:
+
+```bash
+semgrep ci --supply-chain
+```
+
+## Supported ecosystems and lockfiles
+
+| Ecosystem | Lockfiles |
+|---|---|
+| **npm** (JavaScript/TypeScript) | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock` |
+| **PyPI** (Python) | `requirements.txt`, `Pipfile.lock`, `poetry.lock`, `uv.lock` |
+| **Maven / Gradle** (Java/Kotlin) | `pom.xml` dependency tree, `gradle.lockfile` |
+| **Cargo** (Rust) | `Cargo.lock` |
+| **Composer** (PHP) | `composer.lock` |
+| **NuGet** (.NET) | `packages.lock.json` |
+| **RubyGems** | `Gemfile.lock` |
+| **Go modules** | `go.sum` |
+| **Swift Package Manager** | `Package.resolved` |
+| **CocoaPods** | `Podfile.lock` |
+| **Hex** (Elixir) | `mix.lock` |
+| **pub** (Dart/Flutter) | `pubspec.lock` |
+| **opam** (OCaml) | `*.opam.locked` |
+
+## Example lockfile finding
+
+For a project with the following `package-lock.json` entry:
+
+```json
+{
+  "name": "my-app",
+  "lockfileVersion": 3,
+  "packages": {
+    "node_modules/lodash": {
+      "version": "4.17.20",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz"
+    }
+  }
+}
+```
+
+If `lodash@4.17.20` has a known CVE and your code calls `_.template(userInput)` (the vulnerable function), Supply Chain reports:
+
+```
+src/utils.js
+  HIGH: Reachable vulnerability in lodash 4.17.20 (CVE-2021-23337)
+  Prototype pollution via _.template(). Upgrade to lodash >= 4.17.21.
+  34┆ const output = _.template(userInput)(data);
+```
+
+## Supply Chain in CI
+
+When running in CI with `semgrep ci`, Supply Chain findings can block pull requests based on severity and reachability:
+
+```yaml
+# .github/workflows/semgrep.yml
+name: Semgrep Supply Chain
+on:
+  pull_request: {}
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep ci
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+Blocking behavior for Supply Chain findings is configured in the Semgrep AppSec Platform under your policy settings.

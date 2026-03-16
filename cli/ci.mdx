@@ -1,0 +1,160 @@
+---
+title: "semgrep ci"
+description: "Reference for semgrep ci — the command for running Semgrep in continuous integration pipelines."
+---
+
+`semgrep ci` runs Semgrep in a CI environment. Unlike `semgrep scan`, it is designed to:
+
+- Connect to the **Semgrep AppSec Platform** to fetch rules configured for your organization.
+- Upload findings, parse rates, and metadata back to the Platform.
+- Perform **differential scanning** — by default it only reports findings introduced since the merge base commit, reducing noise on pull requests.
+- Determine the exit code based on your organization's policy, not just whether findings exist.
+
+```bash
+semgrep ci [OPTIONS]
+```
+
+<Note>
+  `semgrep ci` requires a `SEMGREP_APP_TOKEN` environment variable or an active session from `semgrep login` to connect to the Platform. Without a token, you must pass `--config` explicitly.
+</Note>
+
+## How it differs from `semgrep scan`
+
+| Behavior | `semgrep scan` | `semgrep ci` |
+|---|---|---|
+| Rule source | `--config` flag (required) | Platform policy (default) or `--config` |
+| Findings upload | No | Yes (when authenticated) |
+| Differential scanning | Manual via `--baseline-commit` | Automatic from git environment |
+| Exit code | Based on `--error` flag | Based on Platform blocking policy |
+| Token required | No | Yes (or `--config` for offline mode) |
+
+## Authentication
+
+`semgrep ci` reads `SEMGREP_APP_TOKEN` from the environment. You can also run `semgrep login` interactively before invoking `semgrep ci`.
+
+```bash
+export SEMGREP_APP_TOKEN=your_token_here
+semgrep ci
+```
+
+If you are not authenticated and provide `--config`, Semgrep runs the scan locally without uploading results.
+
+If you are authenticated and also provide `--config`, Semgrep exits with an error — the two modes are mutually exclusive.
+
+## Flags
+
+### Products
+
+<ParamField path="--supply-chain" type="boolean">
+  Enable Semgrep Supply Chain (SCA) scanning for vulnerable dependencies.
+</ParamField>
+
+<ParamField path="--secrets" type="boolean">
+  Enable Semgrep Secrets scanning (requires Pro Engine).
+</ParamField>
+
+### Scan behavior
+
+<ParamField path="--config" type="string">
+  Use a specific rule config instead of fetching rules from the Platform. Cannot be combined with an authenticated session.
+
+  Set `SEMGREP_RULES` to provide a default.
+</ParamField>
+
+<ParamField path="--baseline-commit" type="string">
+  Report only findings introduced since this commit. Overrides the merge base that Semgrep detects automatically from the CI environment.
+
+  Reads from `SEMGREP_BASELINE_COMMIT` or `SEMGREP_BASELINE_REF`.
+</ParamField>
+
+<ParamField path="--dry-run" type="boolean">
+  Run the scan and compute results but do not upload findings to the Platform.
+</ParamField>
+
+<ParamField path="--suppress-errors" type="boolean" default="true">
+  Exit with code `0` even if a non-findings error occurs (e.g., a network error uploading results). Disable with `--no-suppress-errors`.
+
+  Set `SEMGREP_SUPPRESS_ERRORS=false` to disable globally.
+</ParamField>
+
+<ParamField path="--subdir" type="path">
+  Scan only a subdirectory of the repository instead of the repository root. The path must be a subdirectory of the current working directory.
+</ParamField>
+
+### Shared flags with `semgrep scan`
+
+`semgrep ci` accepts all targeting, performance, output format, and display flags from [`semgrep scan`](/cli/scan), including:
+
+- `--include`, `--exclude`, `--exclude-rule`, `--max-target-bytes`
+- `-j`/`--jobs`, `--timeout`, `--max-memory`
+- `--json`, `--sarif`, `--text`, and all other output format flags
+- `--json-output`, `--sarif-output`, and all `--*-output` file flags
+- `-v`/`--verbose`, `--debug`, `--quiet`
+- `--pro`, `--pro-intrafile`, `--oss-only`
+- `--historical-secrets`, `--allow-untrusted-validators`
+
+## Exit codes in CI
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No blocking findings; scan completed successfully. |
+| `1` | One or more blocking findings were reported (based on Platform policy). |
+| `2` | Fatal error. |
+| `7` | Missing config — no rules configured for this organization. |
+| `13` | Invalid or missing `SEMGREP_APP_TOKEN`. |
+
+<Note>
+  The exit code is determined by the Semgrep AppSec Platform when you are authenticated. A finding is only blocking if the rule is configured as blocking in your organization's policy.
+</Note>
+
+## Example CI configurations
+
+<CodeGroup>
+
+```yaml GitHub Actions
+name: Semgrep
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: semgrep/semgrep-action@v1
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+```bash Shell (generic)
+export SEMGREP_APP_TOKEN="your_token"
+semgrep ci
+```
+
+```bash GitLab CI
+# .gitlab-ci.yml
+semgrep:
+  image: semgrep/semgrep
+  script:
+    - semgrep ci
+  variables:
+    SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
+```
+
+</CodeGroup>
+
+## Running without a token
+
+You can run `semgrep ci` without a token if you provide `--config` explicitly. In this mode:
+
+- Findings are not uploaded to the Platform.
+- The exit code follows the same logic as `semgrep scan --error`.
+- Differential scanning still works based on the detected git environment.
+
+```bash
+# Offline CI mode — no authentication required
+semgrep ci --config=p/owasp-top-ten
+```

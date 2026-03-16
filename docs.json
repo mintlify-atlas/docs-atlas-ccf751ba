@@ -1,122 +1,143 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Semgrep",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#1bc096",
+    "light": "#92dfd1",
+    "dark": "#2c3434"
   },
   "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/54d94b8b-8ef9-4098-8c08-6ee5c00c2944.svg",
+    "dark": "https://media.brand.dev/54d94b8b-8ef9-4098-8c08-6ee5c00c2944.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/semgrep/semgrep"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/semgrep/semgrep"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/rules",
+              "concepts/patterns",
+              "concepts/metavariables",
+              "concepts/languages"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Writing Rules",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "writing-rules/overview",
+              "writing-rules/pattern-syntax",
+              "writing-rules/rule-syntax",
+              "writing-rules/data-flow",
+              "writing-rules/autofix"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Running Scans",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "scanning/local-scan",
+              "scanning/ci-cd",
+              "scanning/pre-commit",
+              "scanning/docker"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/mcp-server",
+              "integrations/vscode",
+              "integrations/github-actions",
+              "integrations/gitlab"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/semgrepignore",
+              "configuration/settings",
+              "configuration/metrics"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/faq"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "CLI Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Commands",
             "pages": [
-              "api-reference/introduction"
+              "cli/overview",
+              "cli/scan",
+              "cli/ci",
+              "cli/login",
+              "cli/publish",
+              "cli/mcp",
+              "cli/test",
+              "cli/validate"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Output Formats",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "cli/output/text",
+              "cli/output/json",
+              "cli/output/sarif"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Rule Reference",
+        "groups": [
+          {
+            "group": "Rule Schema",
+            "pages": [
+              "rules/schema",
+              "rules/operators",
+              "rules/focus-metavariable",
+              "rules/severity-levels"
+            ]
+          },
+          {
+            "group": "Analysis Types",
+            "pages": [
+              "rules/taint-analysis",
+              "rules/supply-chain",
+              "rules/secrets"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

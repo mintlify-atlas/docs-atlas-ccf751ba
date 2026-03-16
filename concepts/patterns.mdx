@@ -1,0 +1,280 @@
+---
+title: "Patterns"
+description: "Patterns are code snippets that Semgrep matches against your source code. They use metavariables and ellipsis operators to match families of similar code."
+keywords: ["patterns", "pattern operators", "ellipsis", "pattern-not", "pattern-inside", "pattern-either", "pattern-regex"]
+---
+
+Patterns are the heart of Semgrep rules. A pattern looks like the code you want to find, written in the target language. Semgrep matches your pattern against real source code using semantic matching — it ignores whitespace, understands equivalent syntax, and uses metavariables as named wildcards.
+
+## How pattern matching works
+
+Semgrep parses both the pattern and the target code into a unified AST (abstract syntax tree), then compares them structurally. This means:
+
+- Whitespace and formatting differences are ignored
+- Semantically equivalent constructs match (e.g., `x += 1` matches `x = x + 1` in many contexts)
+- Variable names in the pattern can be captured with [metavariables](/concepts/metavariables)
+- Arbitrary sequences of code can be matched with the ellipsis operator `...`
+
+## The ellipsis operator `...`
+
+The ellipsis `...` matches zero or more arguments, statements, expressions, or characters, depending on where it appears in the pattern.
+
+<Tabs>
+  <Tab title="Pattern">
+    ```python
+    # Match any call to open() with any arguments
+    open(...)
+    ```
+  </Tab>
+  <Tab title="Matches">
+    ```python
+    open("file.txt")
+    open("file.txt", "r")
+    open(path, mode, encoding="utf-8")
+    ```
+  </Tab>
+</Tabs>
+
+The ellipsis works in several positions:
+
+```python
+# Match any function definition
+def $FUNC(...):
+    ...
+
+# Match any method call on any object
+$OBJ.execute(...)
+
+# Match code between two statements
+foo()
+...
+bar()
+```
+
+When the ellipsis appears between statements (as in the last example), it matches zero or more statements that may appear between `foo()` and `bar()` in the same block.
+
+## Pattern operators
+
+### `pattern`
+
+The simplest form: a single code snippet that Semgrep matches directly.
+
+```yaml
+rules:
+  - id: use-of-exec
+    pattern: exec($CMD)
+    message: Calling exec() with dynamic input is a command injection risk.
+    severity: ERROR
+    languages: [python]
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    exec(user_input)
+    exec(cmd)
+    exec("ls -la")  # also matches literal strings
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    subprocess.run(cmd)   # different function
+    os.system(cmd)        # different function
+    ```
+  </Tab>
+</Tabs>
+
+### `pattern-not`
+
+Subtracts matches from the results. Must be used inside a `patterns` block alongside at least one positive pattern.
+
+```yaml
+patterns:
+  - pattern: open($PATH, ...)
+  - pattern-not: open($PATH, "r")
+  - pattern-not: open($PATH, "rb")
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    open(path, "w")
+    open(path, "a")
+    open(path)           # default mode is read, but not explicit
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    open(path, "r")      # excluded by pattern-not
+    open(path, "rb")     # excluded by pattern-not
+    ```
+  </Tab>
+</Tabs>
+
+### `pattern-inside`
+
+Restricts matches to code that appears inside a surrounding context. Use it to scope a pattern to a particular function, class, or block.
+
+```yaml
+patterns:
+  - pattern: $QUERY = request.GET.get(...)
+  - pattern-inside: |
+      def $VIEW(request, ...):
+          ...
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    def search(request, pk):
+        query = request.GET.get("q")
+        # ... rest of view
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    # Outside a request-handler function
+    def process_data():
+        query = config.get("q")
+    ```
+  </Tab>
+</Tabs>
+
+### `pattern-not-inside`
+
+Excludes matches that appear inside a given surrounding context. The inverse of `pattern-inside`.
+
+```yaml
+patterns:
+  - pattern: hashlib.md5($DATA)
+  - pattern-not-inside: |
+      def test_$FUNC(...):
+          ...
+```
+
+This matches uses of `hashlib.md5()` everywhere except inside test functions.
+
+### `pattern-either`
+
+Matches if any one of the listed patterns matches. Behaves like a logical OR.
+
+```yaml
+patterns:
+  - pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.sha1(...)
+      - pattern: Crypto.Hash.MD5.new(...)
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    digest = hashlib.md5(data)
+    digest = hashlib.sha1(data)
+    digest = Crypto.Hash.MD5.new()
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    digest = hashlib.sha256(data)  # not in the pattern-either list
+    ```
+  </Tab>
+</Tabs>
+
+### `pattern-regex`
+
+Matches text in source code using a regular expression. Useful for patterns that are hard to express structurally, such as hardcoded credentials.
+
+```yaml
+rules:
+  - id: hardcoded-aws-key
+    pattern-regex: "AKIA[0-9A-Z]{16}"
+    message: Possible hardcoded AWS access key found.
+    severity: ERROR
+    languages: [generic]
+```
+
+<Note>
+`pattern-regex` matches against the raw text of the file. It does not use Semgrep's semantic AST matching, so it is not aware of code structure. For most use cases, a structural pattern is more precise.
+</Note>
+
+You can combine `pattern-regex` with structural patterns inside a `patterns` block:
+
+```yaml
+patterns:
+  - pattern: $KEY = "..."
+  - pattern-regex: "(?i)(password|secret|token|api.?key)"
+```
+
+### `pattern-not-regex`
+
+Excludes matches based on a regular expression. Useful for filtering out false positives by text content.
+
+```yaml
+patterns:
+  - pattern: LOG.info($MSG)
+  - pattern-not-regex: "Starting.*"
+```
+
+## Combining operators
+
+Operators inside `patterns` are combined with AND logic by default — all conditions must be satisfied for a match to be reported. Use `pattern-either` for OR logic.
+
+```yaml
+patterns:
+  - pattern-either:                    # matches exec() OR eval()
+      - pattern: exec($CMD)
+      - pattern: eval($CMD)
+  - pattern-not: exec("...")           # exclude literal string calls
+  - pattern-not-inside: |             # exclude test code
+      def test_$FUNC(...):
+          ...
+```
+
+## Matching across whitespace and style
+
+Semgrep is insensitive to code formatting. These all match `open($PATH, ...)` in Python:
+
+```python
+open(path, "w")
+open(
+    path,
+    "w",
+)
+open(path,"w")  # no spaces
+```
+
+## Deep expression matching
+
+By default, Semgrep looks for your pattern at any depth in expressions. The pattern `foo($X)` matches `foo(bar())` and `result = foo(arg)` — you do not need to anchor to a specific statement form.
+
+```yaml
+pattern: subprocess.call($CMD, shell=True)
+```
+
+This matches:
+
+```python
+result = subprocess.call(cmd, shell=True)
+if subprocess.call(cmd, shell=True) == 0:
+    ...
+```
+
+## Metavariables in patterns
+
+Metavariables like `$X`, `$CMD`, and `$...ARGS` are named wildcards that capture matched code. A metavariable used more than once in a pattern must match the same value everywhere it appears:
+
+```python
+# Pattern: detects self-comparison (common bug)
+$X == $X
+```
+
+This matches `value == value` but not `a == b`.
+
+See [Metavariables](/concepts/metavariables) for the full reference.
+
+## Next steps
+
+- Learn how [Metavariables](/concepts/metavariables) work for capturing and filtering code
+- See the [Writing Rules](/writing-rules/overview) guide for putting patterns together into complete rules
+- Try patterns interactively in the [Semgrep Playground](https://semgrep.dev/editor)

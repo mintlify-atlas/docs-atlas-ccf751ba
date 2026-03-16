@@ -1,0 +1,94 @@
+---
+title: "CLI overview"
+description: "Reference for all Semgrep commands, flags, and exit codes."
+---
+
+Semgrep is a command-line tool. Every capability is exposed through subcommands that share a consistent set of global flags.
+
+## Subcommands
+
+```bash
+semgrep [OPTIONS] COMMAND [ARGS]
+```
+
+<CardGroup cols={2}>
+  <Card title="semgrep scan" icon="magnifying-glass" href="/cli/scan">
+    Scan files for rule matches. The primary command for local and offline analysis.
+  </Card>
+  <Card title="semgrep ci" icon="arrows-rotate" href="/cli/ci">
+    Run a scan in CI, connect to the AppSec Platform, and perform differential scanning.
+  </Card>
+  <Card title="semgrep login" icon="key" href="/cli/login">
+    Authenticate with Semgrep AppSec Platform to access Pro rules and Supply Chain scanning.
+  </Card>
+  <Card title="semgrep publish" icon="upload" href="/cli/publish">
+    Upload custom rules to the Semgrep Registry or your organization.
+  </Card>
+  <Card title="semgrep mcp" icon="server" href="/cli/mcp">
+    Start a Model Context Protocol (MCP) server so AI coding agents can call Semgrep.
+  </Card>
+  <Card title="semgrep test" icon="flask" href="/cli/test">
+    Run rule tests using annotated test files.
+  </Card>
+  <Card title="semgrep validate" icon="circle-check" href="/cli/validate">
+    Validate rule YAML files for syntax and semantic correctness.
+  </Card>
+</CardGroup>
+
+## Version flag
+
+```bash
+semgrep --version
+```
+
+Prints the installed Semgrep version and exits.
+
+## Global flags
+
+These flags apply to every subcommand.
+
+| Flag | Description |
+|------|-------------|
+| `-h`, `--help` | Show help and exit. |
+| `--version` | Show version and exit. |
+| `-v`, `--verbose` | Show more details: extra timing output, skipped targets, and verbose error messages. |
+| `-q`, `--quiet` | Suppress all output except findings. |
+| `--debug` | Show all internal logging. Implies `--verbose`. |
+| `--force-color` / `--no-force-color` | Force color output even when writing to a pipe or file. |
+| `--metrics [auto\|on\|off]` | Control anonymized usage metrics. `auto` (default) sends metrics only when using Semgrep Registry rules. Set `SEMGREP_SEND_METRICS` to override. |
+
+## Exit codes
+
+All Semgrep commands exit with a code that reflects the scan outcome.
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Success, no findings reported. |
+| `1` | One or more findings were reported. |
+| `2` | A fatal error occurred (internal error, invalid arguments). |
+| `3` | One or more target files failed to parse. |
+| `4` | One or more rule files failed to parse. |
+| `5` | Unparseable YAML. |
+| `7` | Missing or invalid API key (`SEMGREP_APP_TOKEN`). |
+| `8` | Invalid language specified. |
+| `13` | Invalid API key — authentication rejected by the server. |
+
+<Note>
+  By default, `semgrep scan` exits with code `0` even when findings are reported. Use `--error` to exit with code `1` when findings exist.
+</Note>
+
+## Output formats
+
+Semgrep supports multiple output formats, selectable as flags on `semgrep scan` and `semgrep ci`.
+
+<CardGroup cols={3}>
+  <Card title="Text" icon="align-left" href="/cli/output/text">
+    Human-readable terminal output. Default format.
+  </Card>
+  <Card title="JSON" icon="brackets-curly" href="/cli/output/json">
+    Structured JSON for programmatic processing.
+  </Card>
+  <Card title="SARIF" icon="file-code" href="/cli/output/sarif">
+    SARIF 2.1.0 for GitHub Code Scanning and other SAST integrations.
+  </Card>
+</CardGroup>

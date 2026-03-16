@@ -1,0 +1,109 @@
+---
+title: "focus-metavariable"
+description: "Change the reported code location from the full pattern match to where a specific metavariable matched."
+---
+
+By default, when Semgrep reports a finding it highlights the entire code range that matched your pattern. `focus-metavariable` overrides this behavior: instead of the full match, Semgrep highlights only the sub-range captured by a specified metavariable.
+
+This is useful when you write a pattern like `dangerous_func($X)` to locate a call site, but the actionable problem is the argument `$X`, not the call itself.
+
+## Without vs. with `focus-metavariable`
+
+```yaml
+# Without focus-metavariable
+# Reports the entire call: dangerous_func(user_data)
+rules:
+  - id: dangerous-call
+    pattern: dangerous_func($X)
+    message: Call to dangerous_func with $X.
+    severity: WARNING
+    languages: [python]
+```
+
+```yaml
+# With focus-metavariable
+# Reports only the argument: user_data
+rules:
+  - id: dangerous-call-focused
+    patterns:
+      - pattern: dangerous_func($X)
+      - focus-metavariable: $X
+    message: Dangerous argument passed to dangerous_func.
+    severity: WARNING
+    languages: [python]
+```
+
+## Syntax
+
+`focus-metavariable` is an operator used inside `patterns`:
+
+```yaml
+patterns:
+  - pattern: <your pattern>
+  - focus-metavariable: $METAVAR
+```
+
+You can also supply a list to focus on multiple metavariables simultaneously. Semgrep reports the union of all their ranges:
+
+```yaml
+patterns:
+  - pattern: sink($SRC, $DST)
+  - focus-metavariable:
+      - $SRC
+      - $DST
+```
+
+## When to use it
+
+`focus-metavariable` helps in several scenarios:
+
+- **Highlighting the dangerous value, not the whole expression** — your pattern needs surrounding context to match correctly, but the finding should point at only the risky part.
+- **Reducing noise in large match ranges** — when the pattern spans multiple lines or a whole function call chain.
+- **Autofix precision** — when using `fix`, focusing on a sub-expression can make the highlighted fix region more readable.
+
+## Security-oriented example
+
+The following rule detects SQL queries built by string concatenation in Python. The pattern must match the full `execute` call to be precise, but the actionable finding is the tainted variable `$USER_INPUT`:
+
+```yaml
+rules:
+  - id: python-sqli-string-concat
+    patterns:
+      - pattern: $DB.execute($QUERY + $USER_INPUT)
+      - pattern-not: $DB.execute($QUERY + escape($USER_INPUT))
+      - metavariable-regex:
+          metavariable: $DB
+          regex: ^(cursor|conn|connection|db)$
+      - focus-metavariable: $USER_INPUT
+    message: >
+      `$USER_INPUT` is concatenated directly into a SQL query. Use parameterized
+      queries to prevent SQL injection.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      confidence: HIGH
+      category: security
+```
+
+With this rule, the reported location in the editor or CI output will underline only `$USER_INPUT`, making it immediately clear what the developer needs to fix.
+
+## Interaction with taint mode
+
+In `mode: taint` rules, `focus-metavariable` inside `pattern-sinks` changes which part of the sink pattern is highlighted. For example, to highlight only the argument to a sink function rather than the entire call:
+
+```yaml
+rules:
+  - id: xss-inner-html-focused
+    mode: taint
+    pattern-sources:
+      - pattern: location.search
+      - pattern: document.URL
+    pattern-sinks:
+      - patterns:
+          - pattern: $EL.innerHTML = $DATA
+          - focus-metavariable: $DATA
+    message: User-controlled data assigned to innerHTML may cause XSS.
+    severity: ERROR
+    languages: [javascript, typescript]
+```

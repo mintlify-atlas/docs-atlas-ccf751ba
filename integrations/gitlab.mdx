@@ -1,0 +1,105 @@
+---
+title: "GitLab CI"
+description: "Run Semgrep scans in GitLab CI/CD pipelines to catch security vulnerabilities on merge requests and default branch pushes."
+---
+
+Running Semgrep in GitLab CI/CD lets you automatically scan code on merge requests and pushes to the default branch. Semgrep supports differential scanning on merge requests, so it only reports findings introduced by the current change.
+
+## Complete configuration
+
+Add the following job to your `.gitlab-ci.yml` file:
+
+```yaml .gitlab-ci.yml
+semgrep:
+  image: semgrep/semgrep
+  script: semgrep ci
+  variables:
+    SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+This job:
+- Uses the official `semgrep/semgrep` Docker image
+- Runs `semgrep ci`, which handles differential scanning automatically
+- Triggers on merge requests and on pushes to the default branch
+- Reads `SEMGREP_APP_TOKEN` from GitLab CI/CD variables
+
+## Setup
+
+<Steps>
+  <Step title="Add the Semgrep job to .gitlab-ci.yml">
+    Add the job shown above to your `.gitlab-ci.yml`. If you already have a CI configuration file, you can append the `semgrep` job to it.
+  </Step>
+  <Step title="Add the SEMGREP_APP_TOKEN CI/CD variable">
+    The `SEMGREP_APP_TOKEN` authenticates Semgrep with the Semgrep AppSec Platform to fetch your configured rules and report findings.
+
+    1. Log in to [semgrep.dev](https://semgrep.dev/login) and go to **Settings** → **Tokens** → **API**.
+    2. Generate a new token and copy it.
+    3. In your GitLab project, go to **Settings** → **CI/CD** → **Variables**.
+    4. Click **Add variable**.
+    5. Set the key to `SEMGREP_APP_TOKEN`, paste your token as the value, and mark it as **Masked** to prevent it from appearing in logs.
+    6. Click **Add variable**.
+  </Step>
+  <Step title="Open a merge request">
+    Push your changes and open a merge request. GitLab will run the `semgrep` job as part of the pipeline. Semgrep reports only findings introduced in the merge request diff.
+  </Step>
+</Steps>
+
+## Merge request scanning
+
+When `semgrep ci` runs on a merge request pipeline (`$CI_PIPELINE_SOURCE == "merge_request_event"`), it automatically compares the source branch against the target branch and only reports new findings. Pre-existing issues in your codebase do not fail the pipeline.
+
+The job also runs on the default branch (`$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH`) to keep a full baseline scan in sync with what is in production.
+
+## GitLab SAST integration
+
+GitLab's native SAST feature can be combined with Semgrep's own CI job. If you use GitLab Ultimate, you can also use the [GitLab SAST](https://docs.gitlab.com/ee/user/application_security/sast/) template, which includes a Semgrep-based analyzer:
+
+```yaml .gitlab-ci.yml
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+semgrep:
+  image: semgrep/semgrep
+  script: semgrep ci
+  variables:
+    SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+<Note>
+  The GitLab SAST template includes its own `semgrep-sast` job. Running both the template job and the custom `semgrep` job gives you GitLab's built-in security dashboard integration alongside full Semgrep AppSec Platform reporting.
+</Note>
+
+## Running without the AppSec Platform
+
+If you do not have a Semgrep AppSec Platform account, run Semgrep with community rules directly:
+
+```yaml .gitlab-ci.yml
+semgrep:
+  image: semgrep/semgrep
+  script: semgrep scan --config=auto --error .
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+Findings are printed to the job log. The job exits with code `1` when findings are detected, failing the pipeline.
+
+## Failing the pipeline on findings
+
+`semgrep ci` exits with code `1` when it finds issues, which automatically fails the CI job. To be explicit, or to fail only on a specific severity level, use the `--error` or `--severity` flags:
+
+```yaml
+script: semgrep ci --severity ERROR
+```
+
+## Further reading
+
+- [CI/CD scanning guide](/scanning/ci-cd) — General documentation for running Semgrep in CI/CD pipelines
+- [CLI reference: semgrep ci](/cli/ci) — All flags and options for the `semgrep ci` command
+- [GitLab SAST documentation](https://docs.gitlab.com/ee/user/application_security/sast/) — GitLab's native SAST feature documentation

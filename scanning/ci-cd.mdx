@@ -1,0 +1,113 @@
+---
+title: "CI/CD integration"
+description: "Integrate Semgrep into your CI/CD pipeline to automatically scan pull requests and branches for security issues and bugs."
+---
+
+The `semgrep ci` command is purpose-built for CI environments. It connects to the Semgrep AppSec Platform to fetch your configured rules, runs the scan, and uploads results for review.
+
+<Tip>
+  Use `semgrep ci` instead of `semgrep scan` in CI. The `ci` command handles diff-aware scanning automatically, meaning it reports only findings introduced by the current pull request rather than all pre-existing issues in the codebase.
+</Tip>
+
+## Authentication
+
+`semgrep ci` requires a `SEMGREP_APP_TOKEN` environment variable to authenticate with the Semgrep AppSec Platform. Generate a token in your [Semgrep account settings](https://semgrep.dev/orgs/-/settings/tokens) and store it as a secret in your CI provider.
+
+If you run `semgrep ci` without a token, the command exits with an error.
+
+## Differential scanning
+
+When Semgrep runs on a pull request or merge request, it automatically compares the current branch against the base branch and reports only findings that were **introduced by the new commits**. This lets you adopt Semgrep incrementally without fixing every pre-existing issue first.
+
+You can also trigger diff-aware scanning manually using `--baseline-commit`:
+
+```bash
+semgrep scan --config=auto --baseline-commit=$(git merge-base HEAD main) .
+```
+
+This reports only findings present in the current working tree but not in the merge-base commit.
+
+## CI platform setup
+
+<Tabs>
+  <Tab title="GitHub Actions">
+    Add the following workflow file to `.github/workflows/semgrep.yml`:
+
+    ```yaml .github/workflows/semgrep.yml
+    name: Semgrep
+    on:
+      push:
+        branches: ["main"]
+      pull_request: {}
+    jobs:
+      semgrep:
+        name: Semgrep Scan
+        runs-on: ubuntu-latest
+        container:
+          image: semgrep/semgrep
+        steps:
+          - uses: actions/checkout@v4
+          - run: semgrep ci
+            env:
+              SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+    ```
+
+    **Add the token secret:**
+
+    1. Go to your repository on GitHub.
+    2. Navigate to **Settings** > **Secrets and variables** > **Actions**.
+    3. Click **New repository secret**.
+    4. Set the name to `SEMGREP_APP_TOKEN` and paste your token as the value.
+    5. Click **Add secret**.
+  </Tab>
+  <Tab title="GitLab CI">
+    Add the following to your `.gitlab-ci.yml`:
+
+    ```yaml .gitlab-ci.yml
+    semgrep:
+      image: semgrep/semgrep
+      script: semgrep ci
+      variables:
+        SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
+      rules:
+        - if: $CI_MERGE_REQUEST_IID
+        - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    ```
+
+    **Add the token variable:**
+
+    1. Go to your project on GitLab.
+    2. Navigate to **Settings** > **CI/CD** > **Variables**.
+    3. Click **Add variable**.
+    4. Set the key to `SEMGREP_APP_TOKEN`, paste your token as the value, and enable **Mask variable**.
+    5. Click **Add variable**.
+  </Tab>
+  <Tab title="CircleCI">
+    Add the following to your `.circleci/config.yml`:
+
+    ```yaml .circleci/config.yml
+    version: 2.1
+    jobs:
+      semgrep:
+        docker:
+          - image: semgrep/semgrep
+        steps:
+          - checkout
+          - run:
+              name: Run Semgrep
+              command: semgrep ci
+    workflows:
+      semgrep:
+        jobs:
+          - semgrep:
+              context: semgrep
+    ```
+
+    **Add the token to a context:**
+
+    1. Go to your CircleCI organization settings.
+    2. Navigate to **Contexts** and create or select a context (for example, `semgrep`).
+    3. Add an environment variable named `SEMGREP_APP_TOKEN` with your token as the value.
+    4. Reference that context in your workflow as shown above.
+  </Tab>
+</Tabs>

@@ -1,0 +1,103 @@
+---
+title: "Introduction"
+description: "Semgrep is a fast, open-source static analysis tool that finds bugs, enforces coding standards, and scans for security vulnerabilities across 30+ programming languages."
+---
+
+## What is Semgrep?
+
+Semgrep is a fast, open-source static analysis tool that searches code, finds bugs, and enforces secure guardrails and coding standards. Semgrep supports 30+ languages and can run in an IDE, as a pre-commit check, and as part of CI/CD workflows.
+
+Semgrep is **semantic grep for code**. While running `grep "2"` would only match the exact string _2_, Semgrep would match `x = 1; y = x + 1` when searching for _2_. Semgrep rules look like the code you already write — no abstract syntax trees, regex wrestling, or painful DSLs.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get Semgrep running on your codebase in minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Semgrep via Homebrew, pip, or Docker
+  </Card>
+  <Card title="Writing Rules" icon="pen-to-square" href="/writing-rules/overview">
+    Write custom rules that look like the code you search
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli/overview">
+    Full reference for all Semgrep commands and flags
+  </Card>
+</CardGroup>
+
+## The Semgrep Ecosystem
+
+<CardGroup cols={2}>
+  <Card title="Semgrep Community Edition" icon="code" href="/quickstart">
+    The open-source program analysis engine. Suitable for ad-hoc use with a high tolerance for false positives — ideal for consultants, security auditors, or pentesters.
+  </Card>
+  <Card title="Semgrep AppSec Platform" icon="shield-halved" href="https://semgrep.dev/login">
+    Orchestrate and scale SAST, SCA, and Secrets scanning across an organization. Includes cross-file, cross-function analysis and AI-powered triage.
+  </Card>
+  <Card title="MCP Server" icon="robot" href="/integrations/mcp-server">
+    A Model Context Protocol server that lets AI coding assistants (Cursor, VS Code, Claude) run Semgrep scans directly.
+  </Card>
+  <Card title="Rule Registry" icon="database" href="https://semgrep.dev/explore">
+    2,000+ community-driven rules covering security, correctness, and dependency vulnerabilities.
+  </Card>
+</CardGroup>
+
+## Why Semgrep?
+
+### Rules that look like code
+
+Semgrep rules are written in YAML and use patterns that mirror actual source code. There's no special DSL to learn — if you can write the code, you can write the rule.
+
+```yaml
+rules:
+  - id: hardcoded-password
+    patterns:
+      - pattern: password = "$PWD"
+      - pattern-not: password = ""
+    message: Hardcoded password detected
+    severity: ERROR
+    languages: [python]
+```
+
+### 30+ languages supported
+
+Apex · Bash · C · C++ · C# · Clojure · Dart · Dockerfile · Elixir · HTML · Go · Java · JavaScript · JSX · JSON · Julia · Jsonnet · Kotlin · Lisp · Lua · OCaml · PHP · Python · R · Ruby · Rust · Scala · Scheme · Solidity · Swift · Terraform · TypeScript · TSX · YAML · XML · Generic
+
+### Code is analyzed locally
+
+Semgrep analyzes code locally on your computer or in your build environment: **by default, code is never uploaded**.
+
+### Fast and scalable
+
+Semgrep is designed to run fast at scale. The core analysis engine is written in OCaml for performance, while the CLI and orchestration layer are written in Python.
+
+## Getting started
+
+<Steps>
+  <Step title="Install Semgrep">
+    Install via Homebrew, pip, or Docker. See the [installation guide](/installation) for details.
+    ```bash
+    brew install semgrep
+    # or
+    python3 -m pip install semgrep
+    ```
+  </Step>
+  <Step title="Run your first scan">
+    Run Semgrep against your codebase using community rules:
+    ```bash
+    semgrep --config=auto .
+    ```
+  </Step>
+  <Step title="Explore the results">
+    Review findings in your terminal, or use `--output` to save results as JSON or SARIF for integration with your tooling.
+  </Step>
+  <Step title="Write custom rules">
+    Create rules tuned to your codebase. Rules look like the code you already write. See [Writing Rules](/writing-rules/overview) to get started.
+  </Step>
+</Steps>
+
+## Community and support
+
+- [Semgrep Community Slack](https://go.semgrep.dev/slack) — 4,500+ members
+- [GitHub Issues](https://github.com/semgrep/semgrep/issues) — Bug reports and feature requests
+- [Semgrep Playground](https://semgrep.dev/editor) — Try rules interactively in your browser
+- [Rule Registry](https://semgrep.dev/explore) — Browse 2,000+ community rules

@@ -1,0 +1,185 @@
+---
+title: "Metrics and privacy"
+description: "Understand what Semgrep collects, when it collects it, and how to control data sharing."
+---
+
+Semgrep collects aggregate, pseudonymous metrics to improve the tool. This page explains exactly what is collected, when, and how to opt out.
+
+<Note>
+  Semgrep never uploads your source code. Analysis runs entirely on your machine. Only aggregate statistics about the scan itself are sent to Semgrep's servers.
+</Note>
+
+## When metrics are collected
+
+Metrics collection depends on how you load your rules:
+
+```bash
+# No metrics — rules loaded from a local file
+semgrep --config=myrule.yaml .
+
+# Metrics enabled — rules fetched from the Semgrep Registry
+semgrep --config=p/python .
+
+# Metrics enabled — logged in to semgrep.dev
+semgrep login && semgrep ci
+```
+
+Semgrep does not collect metrics when you run it with only local configuration files or inline patterns. Metrics are enabled when rules come from the [Semgrep Registry](https://semgrep.dev/r), because this helps the maintainers of those rules understand performance and correctness.
+
+## The `--metrics` flag
+
+You can override the default behavior with `--metrics`:
+
+| Value | Behavior |
+|-------|----------|
+| `auto` | (default) Metrics sent when rules come from the Registry or the user is logged in |
+| `on` | Metrics sent on every run |
+| `off` | Metrics never sent |
+
+```bash
+# Explicitly disable metrics
+semgrep --config=p/python --metrics=off .
+
+# Always send metrics
+semgrep --config=myrule.yaml --metrics=on .
+```
+
+You can also set the `SEMGREP_SEND_METRICS` environment variable to `auto`, `on`, or `off`:
+
+```bash
+export SEMGREP_SEND_METRICS=off
+semgrep --config=p/python .
+```
+
+<Note>
+  Some Semgrep integrators set `--metrics=on` for every run. For example, the GitLab Semgrep SAST analyzer enables metrics by default. Check your integration's documentation if you need to override this.
+</Note>
+
+## What is collected
+
+### Environmental data
+
+Contextual information about the runtime environment:
+
+- Semgrep version
+- How long the scan took to run
+- An anonymous user ID (a random UUID stored in `~/.semgrep/settings.yml`)
+- IP address that triggered the run
+- Whether Semgrep is running in CI, and the name of the CI provider
+- Pseudoanonymized hash of the scanned project's name
+- Pseudoanonymized hash of the rule definitions
+- Pseudoanonymized hash of the `--config` argument
+
+### Performance data
+
+Aggregate statistics that help improve the engine and identify slow rules:
+
+- Total scan duration
+- Duration of individual phases (parsing, matching)
+- Total number of rules and files
+- Total bytes scanned
+- Per-rule performance statistics (using rule hashes, not rule content)
+- Per-file performance statistics (file size and timing, not file names or paths)
+
+### Parse rate data
+
+Aggregated parsing statistics on a per-language basis:
+
+- Number of files targeted and successfully parsed
+- Number of bytes targeted and successfully parsed
+
+### Error data
+
+High-level error and warning information:
+
+- Semgrep's exit code
+- Count of errors and warnings
+- Error class names (e.g., `MaxFileSizeExceeded`, `SystemOutOfMemory`, `UnknownFileEncoding`)
+
+### Value data
+
+Information about how useful the scan was:
+
+- Total number of findings
+- Number of ignored findings
+- Pseudoanonymized hashes of the rules that produced findings
+- Features used during the scan (e.g., `language/python`, `option/no-git-ignore`)
+- Engine type requested
+
+## What is never collected
+
+The following data never leaves your environment as part of metrics:
+
+- **Source code** — your code is never sent anywhere
+- **Private rules** — rule content from local files is never uploaded
+- **File names or paths**
+- **Git commit hashes, messages, timestamps, or author information**
+- **Finding messages** — the human-readable text describing a specific finding in your code
+
+This data is only sent to the Semgrep AppSec Platform when you explicitly connect with `semgrep login && semgrep ci`, and even then, your source code and private rules are never transmitted.
+
+## Pseudoanonymization
+
+Certain identifiers — such as your project's URL — are pseudoanonymized before being sent. Pseudoanonymization means the data is transformed with a deterministic, cryptographically secure hash.
+
+This allows Semgrep to:
+
+- Track performance improvements across successive scans of the same project
+- Remove test data from aggregate metrics
+
+Because the hash is deterministic, anyone who independently knows the input value (e.g., a public project URL) and has access to Semgrep's metrics data could correlate the two. Semgrep treats collected metrics as confidential, encrypts data in transit and at rest, and only correlates hashed data to known inputs for publicly available projects.
+
+## Anonymous user ID
+
+On first run, Semgrep generates a random UUID and stores it in `~/.semgrep/settings.yml`:
+
+```yaml
+anonymous_user_id: 5f52484c-3f82-4779-9353-b29bbd3193b6
+```
+
+This ID is included in every metrics payload. It lets Semgrep answer questions like "how many distinct users ran this ruleset?" without identifying who those users are.
+
+When you log in with `semgrep login`, the ID is derived deterministically from your API token so that metrics from your authenticated and unauthenticated sessions can be associated.
+
+## Sample metrics payload
+
+Here is an example of the data that Semgrep sends when metrics are enabled:
+
+```json
+{
+  "started_at": "2021-05-10T21:05:06+00:00",
+  "sent_at": "2021-05-10T21:05:09+00:00",
+  "event_id": "222bcccd-9dc2-4d10-ac3a-5692460e77ee",
+  "anonymous_user_id": "5f52484c-3f82-4779-9353-b29bbd3193b6",
+  "environment": {
+    "version": "0.51.0",
+    "ci": "true",
+    "configNamesHash": "ede96c41b57de3e857090fb3c486e69ad8efae3267bac4ac5fbc19dde7161094",
+    "projectHash": "c65437265631ab2566802d4d90797b27fbe0f608dceeb9451b979d1671c4bc1a",
+    "rulesHash": "b03e452f389e5a86e56426c735afef13686b3e396499fc3c42561f36f6281c43",
+    "isAuthenticated": false
+  },
+  "performance": {
+    "runTime": 37.12,
+    "numRules": 2,
+    "numTargets": 573,
+    "totalBytesScanned": 33938923
+  },
+  "errors": {
+    "returnCode": 1,
+    "errors": ["UnknownLanguage"],
+    "warnings": ["MaxFileSizeExceeded", "TimeoutExceeded"]
+  },
+  "value": {
+    "ruleHashesWithFindings": {
+      "7c43c962dfdbc52882f80021e4d0ef2396e6a950867e81e5f61e68390ee9e166": 4
+    },
+    "numFindings": 7,
+    "numIgnored": 3,
+    "features": ["language/python", "option/no-git-ignore"],
+    "engineRequested": "OSS"
+  }
+}
+```
+
+Note that all project and rule identifiers are one-way hashes — the actual project URL and rule definitions are not included.

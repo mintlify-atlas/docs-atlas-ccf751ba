@@ -1,0 +1,158 @@
+---
+title: "Severity levels"
+description: "Understand Semgrep's three severity levels — ERROR, WARNING, and INFO — and how they affect CLI output, exit codes, and CI behavior."
+---
+
+Every Semgrep rule requires a `severity` field. The value you choose communicates urgency to developers reading findings and controls how Semgrep behaves in CI pipelines.
+
+## The three levels
+
+<CardGroup cols={3}>
+  <Card title="ERROR" icon="circle-xmark">
+    Critical issues that must be fixed. Security vulnerabilities and definite bugs.
+  </Card>
+  <Card title="WARNING" icon="triangle-exclamation">
+    Potential issues and code quality violations that should be reviewed.
+  </Card>
+  <Card title="INFO" icon="circle-info">
+    Style issues and informational findings with no immediate security or correctness impact.
+  </Card>
+</CardGroup>
+
+### ERROR
+
+Use `ERROR` for findings that represent a definite security vulnerability, a data-corrupting bug, or a compliance violation that must be resolved before code ships.
+
+```yaml
+rules:
+  - id: sql-injection-format-string
+    patterns:
+      - pattern: cursor.execute($QUERY % $INPUT)
+    message: User input interpolated into SQL query — SQL injection risk.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      confidence: HIGH
+```
+
+### WARNING
+
+Use `WARNING` for potential issues, misconfigurations, or code patterns that are often problematic but may have legitimate uses depending on context.
+
+```yaml
+rules:
+  - id: hardcoded-ip-address
+    pattern-regex: '\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b'
+    message: Hardcoded internal IP address found. Use configuration or DNS names instead.
+    severity: WARNING
+    languages: [generic]
+```
+
+### INFO
+
+Use `INFO` for style violations, informational notices, or findings that help developers understand the codebase without implying something is broken.
+
+```yaml
+rules:
+  - id: todo-comment
+    pattern-regex: '# TODO:'
+    message: TODO comment found. Consider filing a ticket and removing this.
+    severity: INFO
+    languages: [generic]
+```
+
+## Exit codes
+
+By default, Semgrep exits with code `0` even when it finds matches. This lets you use Semgrep for reporting without blocking CI pipelines.
+
+To make Semgrep exit non-zero when findings are present, use the `--error` flag:
+
+```bash
+semgrep --config my-rules.yaml --error .
+```
+
+With `--error`, Semgrep exits with code `1` if any finding at any severity level is reported.
+
+<Note>
+The `--error` flag does not filter by severity — it triggers on any finding. To block only on specific severities, combine `--error` with `--severity`.
+</Note>
+
+## Filtering by severity
+
+Filter findings to a specific severity level or higher using `--severity`:
+
+```bash
+# Report only ERROR findings
+semgrep --config p/default --severity ERROR .
+
+# Report ERROR and WARNING findings
+semgrep --config p/default --severity WARNING .
+```
+
+Passing `--severity WARNING` reports both `WARNING` and `ERROR` findings (all findings at or above the specified level).
+
+Combine with `--error` to fail CI only on high-severity findings:
+
+```bash
+semgrep --config p/security.yaml --severity ERROR --error .
+```
+
+## Severity in output
+
+### Text output
+
+```
+my_app/views.py
+  severity: ERROR
+  rule: sql-injection-format-string
+  74┆ cursor.execute(query % user_id)
+```
+
+### JSON output
+
+The severity appears as `extra.severity` in each result object:
+
+```json
+{
+  "results": [
+    {
+      "check_id": "sql-injection-format-string",
+      "path": "my_app/views.py",
+      "start": { "line": 74, "col": 5 },
+      "end": { "line": 74, "col": 36 },
+      "extra": {
+        "message": "User input interpolated into SQL query.",
+        "severity": "ERROR",
+        "metadata": {
+          "cwe": "CWE-89: Improper Neutralization of Special Elements used in an SQL Command",
+          "confidence": "HIGH"
+        }
+      }
+    }
+  ]
+}
+```
+
+## Metadata fields used alongside severity
+
+Severity expresses urgency, but the following `metadata` fields let you add structured context that tools and the Semgrep AppSec Platform use for triage:
+
+| Field | Values | Purpose |
+|---|---|---|
+| `confidence` | `HIGH`, `MEDIUM`, `LOW` | How certain is this a true positive? |
+| `likelihood` | `HIGH`, `MEDIUM`, `LOW` | How often is this pattern actually exploited? |
+| `impact` | `HIGH`, `MEDIUM`, `LOW` | How severe is the impact if exploited? |
+| `cwe` | CWE string | Maps to Common Weakness Enumeration entries. |
+| `owasp` | OWASP string | Maps to OWASP Top 10 categories. |
+
+Example:
+
+```yaml
+metadata:
+  confidence: HIGH
+  likelihood: MEDIUM
+  impact: HIGH
+  cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+  owasp: "A01:2021 - Broken Access Control"
+```

@@ -1,0 +1,168 @@
+---
+title: "Settings and environment"
+description: "Configure Semgrep behavior using the settings file and environment variables."
+---
+
+Semgrep reads configuration from two places: a persistent settings file and environment variables. Environment variables take precedence and are the preferred way to configure Semgrep in CI environments.
+
+## Settings file
+
+Semgrep stores user-level settings in `~/.semgrep/settings.yml`. This file is created automatically on first run. You can also point Semgrep to a different file by setting `SEMGREP_SETTINGS_FILE`.
+
+The settings file stores:
+
+- `anonymous_user_id` — a random UUID generated on first run, used for aggregate metrics
+- `api_token` — your Semgrep AppSec Platform token, written here by `semgrep login`
+- `has_shown_metrics_notification` — tracks whether the metrics notice has been displayed
+
+You should not need to edit this file directly. Use `semgrep login` to authenticate and `semgrep logout` to remove your token.
+
+## Environment variables
+
+<ParamField path="SEMGREP_APP_TOKEN" type="string">
+  Authentication token for the Semgrep AppSec Platform. When set, Semgrep uses this token instead of the one stored in `~/.semgrep/settings.yml`. Use this in CI to avoid storing credentials on disk.
+
+  ```bash
+  export SEMGREP_APP_TOKEN=your-token-here
+  semgrep ci
+  ```
+</ParamField>
+
+<ParamField path="SEMGREP_TIMEOUT" type="integer" default="5">
+  Per-rule timeout in seconds. If a rule takes longer than this to run against a single file, Semgrep skips that rule-file pair and continues. The default is 5 seconds.
+
+  ```bash
+  export SEMGREP_TIMEOUT=30
+  ```
+
+  You can also set this with the `--timeout` CLI flag.
+</ParamField>
+
+<ParamField path="SEMGREP_MAX_TARGET_BYTES" type="integer" default="1000000">
+  Maximum file size in bytes that Semgrep will scan. Files larger than this threshold are skipped. The default is 1,000,000 bytes (1 MB).
+
+  ```bash
+  export SEMGREP_MAX_TARGET_BYTES=2000000  # 2 MB
+  ```
+
+  You can also set this with the `--max-target-bytes` CLI flag.
+</ParamField>
+
+<ParamField path="SEMGREP_JOBS" type="integer">
+  Number of parallel jobs Semgrep uses when scanning. Defaults to the number of CPU cores available. Set this to `1` to disable parallelism (useful for debugging).
+
+  ```bash
+  export SEMGREP_JOBS=4
+  ```
+
+  You can also set this with the `-j` CLI flag.
+</ParamField>
+
+<ParamField path="SEMGREP_SEND_METRICS" type="string" default="auto">
+  Controls whether Semgrep sends aggregate usage metrics. Accepts `auto`, `on`, or `off`. See [Metrics and privacy](/configuration/metrics) for details.
+
+  ```bash
+  export SEMGREP_SEND_METRICS=off
+  ```
+</ParamField>
+
+<ParamField path="SEMGREP_SETTINGS_FILE" type="string">
+  Path to a custom settings file. Overrides the default `~/.semgrep/settings.yml` location.
+
+  ```bash
+  export SEMGREP_SETTINGS_FILE=/etc/semgrep/settings.yml
+  ```
+</ParamField>
+
+<ParamField path="SEMGREP_LOG_FILE" type="string">
+  Path where Semgrep writes its log file. Defaults to `~/.semgrep/semgrep.log`.
+
+  ```bash
+  export SEMGREP_LOG_FILE=/tmp/semgrep-debug.log
+  ```
+</ParamField>
+
+## CLI flags for performance
+
+### `--timeout`
+
+Sets the per-rule timeout in seconds. If a rule exceeds this limit on any file, Semgrep records a timeout warning and continues scanning with the remaining rules.
+
+```bash
+semgrep --config=auto --timeout=10 .
+```
+
+Set `--timeout=0` to disable timeouts entirely. This is not recommended for large repositories.
+
+### `--max-memory`
+
+Limits the memory Semgrep's analysis engine can use, in megabytes. When the limit is reached, Semgrep skips the current file and records an out-of-memory warning.
+
+```bash
+semgrep --config=auto --max-memory=2000 .
+```
+
+### `--max-target-bytes`
+
+Skips any file larger than the specified number of bytes. Useful for excluding large generated files or binary assets that would slow down a scan.
+
+```bash
+semgrep --config=auto --max-target-bytes=500000 .
+```
+
+### `-j` / `--jobs`
+
+Controls how many parallel worker processes Semgrep spawns. The default is the number of available CPU cores.
+
+```bash
+# Use 8 parallel workers
+semgrep --config=auto -j 8 .
+
+# Run single-threaded (useful for debugging)
+semgrep --config=auto -j 1 .
+```
+
+## Configuring for different environments
+
+<Tabs>
+  <Tab title="Local development">
+    For local development, the defaults work well. Log in once with `semgrep login` and your token is stored in `~/.semgrep/settings.yml`.
+
+    ```bash
+    # Authenticate once
+    semgrep login
+
+    # Run scans normally
+    semgrep --config=auto .
+    ```
+  </Tab>
+  <Tab title="CI / CD">
+    In CI, set credentials and tuning parameters as environment variables. Never write your token to a file.
+
+    ```bash
+    # GitHub Actions example
+    env:
+      SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+      SEMGREP_TIMEOUT: "30"
+      SEMGREP_JOBS: "4"
+    ```
+
+    ```bash
+    # GitLab CI example
+    variables:
+      SEMGREP_APP_TOKEN: $SEMGREP_APP_TOKEN
+      SEMGREP_SEND_METRICS: "off"
+    ```
+  </Tab>
+  <Tab title="Docker">
+    Pass environment variables directly to the Docker container.
+
+    ```bash
+    docker run --rm \
+      -e SEMGREP_APP_TOKEN="$SEMGREP_APP_TOKEN" \
+      -e SEMGREP_TIMEOUT="30" \
+      -v "${PWD}:/src" \
+      semgrep/semgrep semgrep ci
+    ```
+  </Tab>
+</Tabs>

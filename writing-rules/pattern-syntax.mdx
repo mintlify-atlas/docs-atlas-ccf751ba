@@ -1,0 +1,374 @@
+---
+title: "Pattern syntax"
+description: "Deep dive into every Semgrep pattern construct: metavariables, ellipsis, typed patterns, string matching, regex, deep expression matching, and context operators."
+keywords: ["semgrep patterns", "metavariables", "ellipsis", "pattern syntax", "pattern-inside"]
+---
+
+Semgrep patterns look like real source code. You write code you want to find, and Semgrep searches for it semantically — handling equivalent whitespace, variable names, and syntax forms across the language. This page documents every pattern construct available.
+
+## Exact code match
+
+The simplest pattern is an exact code fragment. Semgrep matches it regardless of whitespace or equivalent formatting:
+
+```yaml
+pattern: os.system($CMD)
+```
+
+This matches `os.system(cmd)`, `os.system(user_input)`, and any other call to `os.system` — because `$CMD` is a metavariable that matches any expression.
+
+A fully exact match with no metavariables:
+
+```yaml
+pattern: hashlib.md5()
+```
+
+This matches exactly `hashlib.md5()` and nothing else.
+
+## Metavariables
+
+Metavariables capture any single AST node (expression, statement, identifier, type, etc.) and bind it to a name you can reference elsewhere in the rule.
+
+**Syntax:** `$NAME` where `NAME` is uppercase letters, digits, and underscores.
+
+```yaml
+rules:
+  - id: subprocess-call
+    pattern: subprocess.run($CMD, shell=True)
+    message: "Found subprocess.run with shell=True. Command: $CMD"
+    severity: WARNING
+    languages: [python]
+```
+
+Metavariable naming rules:
+- Must start with `$`
+- The rest must be uppercase (`$X`, `$FOO`, `$ARG1`)
+- `$_` is a wildcard that matches anything without binding
+
+### Reusing metavariables
+
+When you use the same metavariable in multiple parts of a pattern, Semgrep unifies the bindings — both occurrences must match the same value:
+
+```yaml
+rules:
+  - id: self-assignment
+    pattern: $X = $X
+    message: "Suspicious self-assignment"
+    severity: WARNING
+    languages: [python, javascript, go]
+```
+
+### Metavariables in messages
+
+Reference bound metavariables in the `message` field to include matched code in the output:
+
+```yaml
+message: "Unsafe deserialization of $DATA from user input"
+```
+
+## Ellipsis operator
+
+The ellipsis `...` matches zero or more of anything — arguments, statements, expressions, or fields — in a sequence.
+
+<Tabs>
+  <Tab title="Python">
+    Match any call to `open()` regardless of how many arguments it takes:
+
+    ```yaml
+    pattern: open(...)
+    ```
+
+    Match a function that calls `dangerous_func` somewhere in its body:
+
+    ```yaml
+    pattern: |
+      def $FUNC(...):
+        ...
+        dangerous_func(...)
+        ...
+    ```
+  </Tab>
+  <Tab title="JavaScript">
+    Match any `require()` call with any arguments:
+
+    ```yaml
+    pattern: require(...)
+    ```
+
+    Match a function that logs `password` somewhere in its body:
+
+    ```yaml
+    pattern: |
+      function $F(...) {
+        ...
+        console.log(..., password, ...);
+        ...
+      }
+    ```
+  </Tab>
+  <Tab title="Java">
+    Match any instantiation of `Runtime` with any arguments:
+
+    ```yaml
+    pattern: Runtime.getRuntime().exec(...)
+    ```
+
+    Match a method that calls `execute` somewhere:
+
+    ```yaml
+    pattern: |
+      $TYPE $METHOD(...) {
+        ...
+        $STMT.execute(...);
+        ...
+      }
+    ```
+  </Tab>
+  <Tab title="Go">
+    Match any `http.Get` call:
+
+    ```yaml
+    pattern: http.Get(...)
+    ```
+
+    Match a function that calls `exec.Command`:
+
+    ```yaml
+    pattern: |
+      func $FUNC(...) {
+        ...
+        exec.Command(...)
+        ...
+      }
+    ```
+  </Tab>
+</Tabs>
+
+### Ellipsis in argument lists
+
+Use `...` in argument lists to match any arguments before, after, or between specific arguments:
+
+```yaml
+# Match cursor.execute where the first argument is a concatenation
+pattern: cursor.execute($QUERY + $INPUT, ...)
+
+# Match logging calls that include a password variable anywhere
+pattern: logging.info(..., password=..., ...)
+```
+
+## Typed metavariables
+
+In statically typed languages, you can constrain a metavariable to match only nodes of a specific type:
+
+**Syntax:** `($X : type)`
+
+<Tabs>
+  <Tab title="Java">
+    Match only `String` arguments passed to `execute`:
+
+    ```yaml
+    pattern: $STMT.execute((String $QUERY))
+    ```
+
+    Match any method that takes an `HttpServletRequest`:
+
+    ```yaml
+    pattern: |
+      $TYPE $METHOD(HttpServletRequest $REQ, ...) {
+        ...
+      }
+    ```
+  </Tab>
+  <Tab title="Go">
+    Match variables of type `*http.Request`:
+
+    ```yaml
+    pattern: ($REQ : *http.Request).FormValue(...)
+    ```
+  </Tab>
+  <Tab title="TypeScript">
+    Match variables typed as `string`:
+
+    ```yaml
+    pattern: eval(($CODE: string))
+    ```
+  </Tab>
+</Tabs>
+
+## String pattern matching
+
+Use `"..."` inside a string literal to match any string value, or write an exact string to match precisely:
+
+```yaml
+# Match any string assigned to password
+pattern: password = "..."
+
+# Match only empty string
+pattern: password = ""
+```
+
+Combine with `pattern-not` to exclude empty strings:
+
+```yaml
+rules:
+  - id: hardcoded-password
+    patterns:
+      - pattern: password = "$VALUE"
+      - pattern-not: password = ""
+    message: "Hardcoded password: $VALUE"
+    severity: ERROR
+    languages: [python]
+```
+
+## Regular expression patterns
+
+Use `pattern-regex` to match file content using PCRE-compatible regular expressions. This is useful for secrets detection and patterns that span lines:
+
+```yaml
+rules:
+  - id: aws-access-key
+    pattern-regex: 'AKIA[0-9A-Z]{16}'
+    message: "Possible AWS access key detected"
+    severity: ERROR
+    languages: [generic]
+```
+
+Combine `pattern-regex` with `pattern-inside` for context-aware regex matching:
+
+```yaml
+rules:
+  - id: secret-in-config
+    patterns:
+      - pattern-regex: 'secret\s*=\s*["\'][^"\'\']+["\']'
+      - pattern-inside: |
+          [database]
+          ...
+    message: "Hardcoded secret found in database config section"
+    severity: ERROR
+    languages: [generic]
+```
+
+<Note>
+`pattern-regex` operates on the raw text of the file, not the AST. It is most useful with `languages: [generic]` or alongside AST-based patterns in a `patterns:` block.
+</Note>
+
+## Metavariable regex
+
+Constrain a metavariable to match only when its captured text satisfies a regex using `metavariable-regex`:
+
+```yaml
+rules:
+  - id: insecure-hash
+    patterns:
+      - pattern: hashlib.$ALGO(...)
+      - metavariable-regex:
+          metavariable: $ALGO
+          regex: ^(md5|sha1)$
+    message: "Insecure hash algorithm: $ALGO"
+    severity: WARNING
+    languages: [python]
+```
+
+## Pattern context operators
+
+### pattern-inside
+
+`pattern-inside` requires that a match occur inside another matching pattern. Use it to scope a finding to a specific context:
+
+<Tabs>
+  <Tab title="Python">
+    Only flag `exec()` calls that appear inside a Flask route handler:
+
+    ```yaml
+    rules:
+      - id: exec-in-route
+        patterns:
+          - pattern: exec($CMD)
+          - pattern-inside: |
+              @app.route(...)
+              def $FUNC(...):
+                ...
+        message: "exec() inside a Flask route is dangerous"
+        severity: ERROR
+        languages: [python]
+    ```
+  </Tab>
+  <Tab title="JavaScript">
+    Only flag `eval()` inside an async function:
+
+    ```yaml
+    rules:
+      - id: eval-in-async
+        patterns:
+          - pattern: eval($CODE)
+          - pattern-inside: |
+              async function $F(...) {
+                ...
+              }
+        message: "eval() inside async function"
+        severity: WARNING
+        languages: [javascript]
+    ```
+  </Tab>
+</Tabs>
+
+### pattern-not-inside
+
+`pattern-not-inside` excludes matches that occur inside another matching pattern. Use it to suppress findings in safe contexts:
+
+```yaml
+rules:
+  - id: unparameterized-query
+    patterns:
+      - pattern: cursor.execute($QUERY)
+      - pattern-not-inside: |
+          def test_$FUNC(...):
+            ...
+    message: "cursor.execute called outside of tests with a dynamic query"
+    severity: WARNING
+    languages: [python]
+```
+
+### pattern-not
+
+`pattern-not` excludes results that also match another pattern. It must appear inside a `patterns:` block alongside at least one positive pattern:
+
+```yaml
+rules:
+  - id: missing-timeout
+    patterns:
+      - pattern: requests.get($URL)
+      - pattern-not: requests.get($URL, timeout=...)
+    message: "requests.get called without a timeout"
+    severity: WARNING
+    languages: [python]
+```
+
+## Deep expression matching
+
+Use `<... pattern ...>` to search for a pattern anywhere within a larger expression — not just at the top level:
+
+```yaml
+rules:
+  - id: tainted-in-format
+    pattern: "$SINK(<... request.args.get(...) ...>)"
+    message: "User input flows into $SINK"
+    severity: WARNING
+    languages: [python]
+```
+
+Without the deep expression operator, the pattern would only match when `request.args.get(...)` is the direct argument. With `<...>`, it matches even when the user input is nested inside other expressions like `str(request.args.get(...))` or `"{}".format(request.args.get(...))`.
+
+<Tip>
+Use deep expression matching sparingly. It increases the scope of the search and can produce more results than expected. Prefer explicit patterns when the nesting structure is known.
+</Tip>
+
+## Whitespace and equivalent forms
+
+Semgrep normalizes whitespace and understands equivalent syntax forms:
+
+- `f(a,b)` matches `f( a , b )` (whitespace variations)
+- `x = 1; y = x + 1` can match the semantic value `2`
+- Assignment patterns match variable declarations in languages like JavaScript (`var x = 1` is matched by `$X = $Y`)
+- Short lambdas (arrow functions) are treated like regular functions
+
+This means you write patterns that look natural and Semgrep handles the syntactic noise.

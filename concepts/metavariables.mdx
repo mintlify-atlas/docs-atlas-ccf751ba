@@ -1,0 +1,310 @@
+---
+title: "Metavariables"
+description: "Metavariables are named placeholders in Semgrep patterns that capture and match arbitrary code elements, enabling rules that express relationships between multiple parts of a match."
+keywords: ["metavariables", "$X", "ellipsis metavariable", "metavariable-regex", "metavariable-pattern", "metavariable-comparison", "focus-metavariable"]
+---
+
+Metavariables are named wildcards in Semgrep patterns. They look like `$X`, `$FOO`, or `$...ARGS`. When Semgrep matches a pattern containing a metavariable, it captures whatever code appears at that position and binds it to the metavariable name.
+
+Metavariables serve two purposes:
+
+1. **Wildcard matching** — match any code at a position without specifying the exact value
+2. **Consistency constraints** — enforce that the same code appears in multiple places within a match
+
+## Naming rules
+
+A metavariable must start with `$` followed by one or more uppercase letters, digits, or underscores:
+
+| Valid | Invalid |
+|---|---|
+| `$X` | `$x` (lowercase) |
+| `$FOO` | `$foo` |
+| `$MY_VAR` | `my_var` (no `$`) |
+| `$VAR2` | `$2VAR` (starts with digit) |
+| `$_` (anonymous) | |
+
+The anonymous metavariable `$_` matches anything but does not bind a value. Use it when you need a wildcard but do not care about the matched value.
+
+## Basic usage
+
+Metavariables match any single expression, statement, identifier, or other syntactic unit depending on position:
+
+<CodeGroup>
+
+```yaml python — match any function call argument
+rules:
+  - id: tainted-format-string
+    pattern: logging.info($FMT, ...)
+    message: Logging with $FMT — ensure format string is not user-controlled.
+    severity: WARNING
+    languages: [python]
+```
+
+```yaml javascript — match any method name on console
+rules:
+  - id: no-console-methods
+    pattern: console.$METHOD(...)
+    message: Remove console.$METHOD() before committing.
+    severity: WARNING
+    languages: [javascript, typescript]
+```
+
+```yaml go — match any error check
+rules:
+  - id: unchecked-error
+    pattern: |
+      $RET, $ERR := $FUNC(...)
+      ...
+      $RET
+    pattern-not: |
+      $RET, $ERR := $FUNC(...)
+      if $ERR != nil {
+          ...
+      }
+    message: Error from $FUNC may be unhandled.
+    severity: WARNING
+    languages: [go]
+```
+
+</CodeGroup>
+
+## Consistency constraints
+
+When the same metavariable appears more than once in a pattern, all occurrences must match the same code. This is one of the most powerful features of metavariables:
+
+```yaml
+rules:
+  - id: self-assignment
+    pattern: $X = $X
+    message: Assigning a variable to itself is likely a bug.
+    severity: ERROR
+    languages: [python, javascript, java, go]
+```
+
+This matches `count = count` but not `count = total`.
+
+```yaml
+rules:
+  - id: equals-self-comparison
+    pattern: assert $VAL == $VAL
+    message: Comparing $VAL to itself always returns True.
+    severity: ERROR
+    languages: [python]
+```
+
+## Ellipsis metavariables `$...FOO`
+
+An ellipsis metavariable like `$...ARGS` matches zero or more arguments, statements, or other sequences. It is the named equivalent of `...`.
+
+```yaml
+rules:
+  - id: subprocess-shell-true
+    pattern: subprocess.run($...ARGS, shell=True)
+    message: shell=True with dynamic arguments is a command injection risk.
+    severity: ERROR
+    languages: [python]
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    subprocess.run(cmd, shell=True)
+    subprocess.run(["ls", path], shell=True)
+    subprocess.run(args, cwd=workdir, shell=True)
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    subprocess.run(cmd)             # no shell=True
+    subprocess.run(cmd, shell=False)
+    ```
+  </Tab>
+</Tabs>
+
+Because `$...ARGS` is named, you can reference it in the `message` field or use it in metavariable conditions.
+
+## Metavariable conditions
+
+After a metavariable captures a value, you can filter or refine matches using condition operators.
+
+### `metavariable-regex`
+
+Filters a match based on whether the text of a metavariable matches a regular expression:
+
+```yaml
+rules:
+  - id: hardcoded-secret-assignment
+    patterns:
+      - pattern: $VAR = "$VALUE"
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: "(?i)(password|secret|token|api_?key)"
+    message: Possible hardcoded secret assigned to $VAR.
+    severity: ERROR
+    languages: [python, javascript, typescript]
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    password = "s3cr3t!"
+    API_KEY = "abc123"
+    db_secret = "hunter2"
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    username = "admin"      # VAR doesn't match the regex
+    config = "verbose"      # VAR doesn't match the regex
+    ```
+  </Tab>
+</Tabs>
+
+### `metavariable-pattern`
+
+Applies a Semgrep pattern to the code captured by a metavariable. Useful when the captured value is itself a complex expression you want to inspect further:
+
+```yaml
+rules:
+  - id: sql-injection-from-request
+    patterns:
+      - pattern: db.execute($QUERY)
+      - metavariable-pattern:
+          metavariable: $QUERY
+          patterns:
+            - pattern: "..." + request.$ATTR
+    message: SQL query built with request data — possible SQL injection.
+    severity: ERROR
+    languages: [python]
+```
+
+You can also specify a different language for the metavariable-pattern if the captured content is in another language:
+
+```yaml
+rules:
+  - id: unsafe-html-in-js-template
+    patterns:
+      - pattern: dangerouslySetInnerHTML={{__html: $HTML}}
+      - metavariable-pattern:
+          metavariable: $HTML
+          language: javascript
+          patterns:
+            - pattern-not: sanitize($X)
+    message: HTML content $HTML is not sanitized before injection.
+    severity: WARNING
+    languages: [jsx, tsx]
+```
+
+### `metavariable-comparison`
+
+Compares a metavariable's value against a constant or another metavariable using a comparison expression. Supports numeric comparisons and string operations:
+
+```yaml
+rules:
+  - id: small-rsa-key
+    patterns:
+      - pattern: RSA.generate($BITS)
+      - metavariable-comparison:
+          metavariable: $BITS
+          comparison: $BITS < 2048
+    message: RSA key size $BITS is below the recommended minimum of 2048 bits.
+    severity: ERROR
+    languages: [python]
+```
+
+<Tabs>
+  <Tab title="Matches">
+    ```python
+    key = RSA.generate(512)
+    key = RSA.generate(1024)
+    ```
+  </Tab>
+  <Tab title="Does not match">
+    ```python
+    key = RSA.generate(2048)
+    key = RSA.generate(4096)
+    ```
+  </Tab>
+</Tabs>
+
+### `metavariable-type`
+
+Matches based on the inferred type of a metavariable. Supported in typed languages such as Java, TypeScript, and Go:
+
+```yaml
+rules:
+  - id: integer-to-string-concat
+    patterns:
+      - pattern: $STR + $NUM
+      - metavariable-type:
+          metavariable: $STR
+          type: String
+      - metavariable-type:
+          metavariable: $NUM
+          type: int
+    message: Implicit int-to-string concatenation may produce unexpected results.
+    severity: WARNING
+    languages: [java]
+```
+
+## `focus-metavariable`
+
+By default, a Semgrep finding highlights the entire range of the matched pattern. `focus-metavariable` narrows the finding to highlight only the code captured by a specific metavariable.
+
+This is useful when the pattern needs surrounding context to constrain the match, but the actionable part is a specific sub-expression:
+
+```yaml
+rules:
+  - id: tainted-redirect-url
+    patterns:
+      - pattern: return redirect($URL)
+      - pattern-inside: |
+          def $VIEW(request, ...):
+              ...
+      - metavariable-pattern:
+          metavariable: $URL
+          patterns:
+            - pattern-not: "..."
+    focus-metavariable: $URL
+    message: Redirect target $URL is derived from non-literal — possible open redirect.
+    severity: ERROR
+    languages: [python]
+```
+
+With `focus-metavariable: $URL`, the finding highlights the URL expression rather than the entire `return redirect(...)` statement.
+
+You can focus on multiple metavariables at once by providing a list:
+
+```yaml
+focus-metavariable:
+  - $URL
+  - $VIEW
+```
+
+## Using metavariables in messages
+
+You can interpolate any captured metavariable directly into the `message` field using `$METAVAR` syntax:
+
+```yaml
+message: >
+  $FUNC is called with unsanitized user input $ARG.
+  Validate $ARG before passing it to $FUNC.
+```
+
+Semgrep substitutes the actual matched code into the message, so findings read like: `open is called with unsanitized user input user_path.`
+
+## Anonymous metavariable `$_`
+
+Use `$_` when you need a positional wildcard but do not need to reference the matched value:
+
+```yaml
+pattern: connect($_, $_, $PASSWORD)
+```
+
+This matches the third argument of `connect()` regardless of what the first two arguments are, without binding names to them.
+
+## Next steps
+
+- See [Patterns](/concepts/patterns) for the operators that work alongside metavariables
+- Read [Writing Rules](/writing-rules/overview) to apply metavariables in full rules
+- Try metavariable matching live in the [Semgrep Playground](https://semgrep.dev/editor)

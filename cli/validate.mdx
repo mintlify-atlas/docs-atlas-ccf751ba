@@ -1,0 +1,131 @@
+---
+title: "semgrep validate"
+description: "Validate Semgrep rule YAML files for syntax and semantic correctness."
+---
+
+`semgrep validate` checks one or more Semgrep rule files and reports any errors without running a scan.
+
+```bash
+semgrep validate [OPTIONS] [PATHS...]
+```
+
+Semgrep also accepts `--validate` as a flag on `semgrep scan`:
+
+```bash
+semgrep scan --validate --config=rules/my-rule.yaml
+```
+
+## What validation checks
+
+Validation runs a multi-stage check:
+
+1. **YAML syntax** — the file must be valid YAML.
+2. **Required fields** — each rule must have `id`, `message`, `languages`, `severity`, and at least one pattern key.
+3. **Pattern validity** — each pattern is compiled by the Semgrep engine to verify it parses correctly for the declared language.
+4. **Metachecks** — the engine runs metachecks (rules-about-rules) to catch common rule mistakes such as unreachable patterns or overly broad ellipsis usage.
+
+## Example
+
+### Valid rule
+
+```bash
+semgrep validate rules/no-eval.yaml
+```
+
+```text
+Configuration is valid - found 0 configuration error(s), and 1 rule(s).
+```
+
+### Invalid rule — missing required field
+
+```yaml bad-rule.yaml
+rules:
+  - id: missing-severity
+    pattern: eval(...)
+    message: Avoid eval.
+    languages: [python]
+    # severity is missing
+```
+
+```bash
+semgrep validate bad-rule.yaml
+```
+
+```text
+Configuration is invalid - found 1 configuration error(s), and 0 rule(s).
+
+[ERROR] Invalid rule schema
+  --> bad-rule.yaml:2
+  2 | - id: missing-severity
+  ...
+  = help: 'severity' is a required property
+```
+
+### Invalid rule — pattern parse error
+
+```yaml bad-pattern.yaml
+rules:
+  - id: bad-pattern
+    pattern: "def foo(: bad syntax"
+    message: Example.
+    languages: [python]
+    severity: WARNING
+```
+
+```bash
+semgrep validate bad-pattern.yaml
+```
+
+```text
+Configuration is invalid - found 1 configuration error(s), and 0 rule(s).
+
+[ERROR] Pattern parse error in rule bad-pattern
+  Could not parse pattern as Python.
+```
+
+## Flags
+
+<ParamField path="--config" type="string" required>
+  Path to the rule file or directory to validate.
+</ParamField>
+
+<ParamField path="--json" type="boolean">
+  Output validation results as JSON.
+</ParamField>
+
+<ParamField path="--verbose" type="boolean">
+  Print extra details about each rule checked.
+</ParamField>
+
+## Integrating into CI
+
+Validate your custom rules in CI to catch errors before they reach production:
+
+```yaml GitHub Actions
+name: Validate Semgrep rules
+on:
+  pull_request:
+    paths:
+      - 'rules/**'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Validate rules
+        run: semgrep validate rules/
+```
+
+```bash Shell (pre-commit)
+# .pre-commit-config.yaml
+- repo: local
+  hooks:
+    - id: validate-semgrep-rules
+      name: Validate Semgrep rules
+      entry: semgrep validate
+      args: [rules/]
+      language: python
+      pass_filenames: false
+```

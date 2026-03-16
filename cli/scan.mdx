@@ -1,0 +1,270 @@
+---
+title: "semgrep scan"
+description: "Full reference for the semgrep scan command and all its flags."
+---
+
+`semgrep scan` is the primary command for running Semgrep locally. It scans files and directories against a set of rules and prints findings.
+
+```bash
+semgrep scan [OPTIONS] [PATHS...]
+```
+
+If no `PATHS` are provided, Semgrep scans the current directory.
+
+## Quick examples
+
+```bash
+# Scan current directory using automatically selected rules
+semgrep scan --config=auto .
+
+# Scan with a specific ruleset from the registry
+semgrep scan --config=p/owasp-top-ten src/
+
+# Scan with a local rule file
+semgrep scan --config=rules/my-rule.yaml src/
+
+# Search for a code pattern in Python files
+semgrep scan -e 'os.system(...)' --lang=python .
+
+# Output findings as JSON
+semgrep scan --config=auto --json .
+
+# Apply autofixes (dry run — show what would change)
+semgrep scan --config=auto --autofix --dryrun .
+```
+
+## Configuration flags
+
+Configuration flags are mutually exclusive: use either `--config` or `--pattern`, not both.
+
+<ParamField path="--config" type="string" required>
+  Rules to scan with. Accepts:
+  - A path to a local `.yaml` rule file or directory of rule files.
+  - A URL to a rule file.
+  - A registry shorthand: `auto`, `p/<ruleset-name>`, `r/<rule-id>`.
+  - `auto`: automatically selects rules matching the detected languages.
+
+  Can be specified multiple times. Set `SEMGREP_RULES` to provide a default.
+</ParamField>
+
+<ParamField path="-c, -f" type="string">
+  Aliases for `--config`.
+</ParamField>
+
+<ParamField path="--pattern, -e" type="string">
+  A Semgrep pattern to search for inline. Must be used with `--lang`.
+</ParamField>
+
+<ParamField path="--lang, -l" type="string">
+  Language to use when `--pattern` is given (e.g., `python`, `javascript`, `go`). See [supported languages](/concepts/languages).
+</ParamField>
+
+## Output format flags
+
+These flags are mutually exclusive. The default output format is `--text`.
+
+| Flag | Description |
+|------|-------------|
+| `--text` | Human-readable terminal output (default). See [Text output](/cli/output/text). |
+| `--json` | JSON output. See [JSON output](/cli/output/json). |
+| `--sarif` | SARIF 2.1.0 output. See [SARIF output](/cli/output/sarif). |
+| `--emacs` | Emacs-compatible output format. |
+| `--vim` | Vim-compatible quickfix output format. |
+| `--gitlab-sast` | GitLab SAST report format. |
+| `--gitlab-secrets` | GitLab Secrets report format. |
+| `--junit-xml` | JUnit XML report format. |
+
+### Write additional outputs to files
+
+You can write additional output formats to files at the same time as the primary output. Each flag accepts a file path and can be specified multiple times.
+
+| Flag | Description |
+|------|-------------|
+| `--json-output FILE` | Write JSON output to `FILE`. |
+| `--sarif-output FILE` | Write SARIF output to `FILE`. |
+| `--text-output FILE` | Write text output to `FILE`. |
+| `--emacs-output FILE` | Write Emacs output to `FILE`. |
+| `--vim-output FILE` | Write Vim output to `FILE`. |
+| `--gitlab-sast-output FILE` | Write GitLab SAST output to `FILE`. |
+| `--gitlab-secrets-output FILE` | Write GitLab Secrets output to `FILE`. |
+| `--junit-xml-output FILE` | Write JUnit XML output to `FILE`. |
+
+## Targeting flags
+
+<ParamField path="--include" type="string">
+  Only scan files matching this glob pattern. Can be specified multiple times.
+
+  Example: `--include='*.py'`
+</ParamField>
+
+<ParamField path="--exclude" type="string">
+  Skip files matching this glob pattern. Can be specified multiple times.
+
+  When a path matches both `--include` and `--exclude`, Semgrep skips it.
+
+  Example: `--exclude='tests/*'`
+</ParamField>
+
+<ParamField path="--exclude-rule" type="string">
+  Skip findings from the specified rule ID. Can be specified multiple times.
+
+  Example: `--exclude-rule='python.lang.security.audit.sqli'`
+</ParamField>
+
+<ParamField path="--max-target-bytes" type="bytes" default="1000000">
+  Skip files larger than this size. Accepts byte suffixes: `1MB`, `500KB`. Default is `1000000` bytes (1 MB).
+</ParamField>
+
+<ParamField path="--scan-unknown-extensions" type="boolean" default="false">
+  Scan files with extensions not recognized by Semgrep. By default, Semgrep skips these files (`--skip-unknown-extensions`).
+</ParamField>
+
+<ParamField path="--use-git-ignore" type="boolean" default="true">
+  Respect `.gitignore` patterns when selecting targets. Disable with `--no-git-ignore`.
+</ParamField>
+
+## Performance flags
+
+<ParamField path="-j, --jobs" type="integer">
+  Number of parallel worker processes. Defaults to the number of available CPU cores.
+</ParamField>
+
+<ParamField path="--timeout" type="integer" default="5">
+  Per-rule timeout in seconds before Semgrep moves on. `0` means no timeout. Set with `SEMGREP_TIMEOUT`.
+</ParamField>
+
+<ParamField path="--timeout-threshold" type="integer" default="3">
+  Number of rules that can time out on a single file before that file is skipped entirely.
+</ParamField>
+
+<ParamField path="--max-memory" type="integer">
+  Maximum memory in MiB for the Semgrep engine per job. `0` (default for local scans) means unlimited.
+</ParamField>
+
+<ParamField path="--optimizations" type="string" default="all">
+  Performance optimization level. Options: `all` (default), `none`.
+</ParamField>
+
+<ParamField path="--interfile-timeout" type="integer">
+  Timeout in seconds for cross-file analysis (Pro Engine). `0` means unlimited (default for local scans).
+</ParamField>
+
+## Analysis flags
+
+<ParamField path="--autofix" type="boolean">
+  Apply autofixes defined in rules. Use `--dryrun` to preview changes without writing them.
+</ParamField>
+
+<ParamField path="--dryrun" type="boolean">
+  Show what autofixes would apply without writing changes to disk. Requires `--autofix`.
+</ParamField>
+
+<ParamField path="--severity" type="string">
+  Only report findings at this severity level. Options: `INFO`, `WARNING`, `ERROR`. Can be specified multiple times to include multiple levels.
+</ParamField>
+
+<ParamField path="--error" type="boolean">
+  Exit with code `1` when findings are reported. By default, `semgrep scan` exits with `0` regardless of findings.
+</ParamField>
+
+<ParamField path="--strict" type="boolean">
+  Return a non-zero exit code if any errors or warnings occur (e.g., rule parse errors).
+</ParamField>
+
+<ParamField path="--enable-nosem" type="boolean" default="true">
+  Honor `# nosem` and `# nosemgrep` inline suppression comments. Disable with `--disable-nosem`.
+</ParamField>
+
+## Display flags
+
+<ParamField path="-o, --output" type="string">
+  Write findings to a file instead of stdout.
+</ParamField>
+
+<ParamField path="--rewrite-rule-ids" type="boolean" default="true">
+  Rewrite rule IDs to include their source path when loading from a directory. Disable with `--no-rewrite-rule-ids`.
+</ParamField>
+
+<ParamField path="--dataflow-traces" type="boolean">
+  Show dataflow traces for taint findings (Pro Engine). Default depends on engine type.
+</ParamField>
+
+<ParamField path="--max-lines-per-finding" type="integer" default="10">
+  Maximum number of lines to display per finding.
+</ParamField>
+
+<ParamField path="--max-chars-per-line" type="integer" default="160">
+  Maximum characters per line in output before truncation.
+</ParamField>
+
+<ParamField path="--time" type="boolean">
+  Add per-rule timing information to output.
+</ParamField>
+
+## Debugging flags
+
+| Flag | Description |
+|------|-------------|
+| `-v`, `--verbose` | Print extra details about skipped files and rules. |
+| `--debug` | Print all internal logging. |
+| `-q`, `--quiet` | Suppress all output except findings. |
+| `--profile` | Print internal profiling data (hidden flag). |
+| `--trace` | Enable OpenTelemetry tracing. Use with `--trace-endpoint` to specify the OTLP endpoint (`SEMGREP_OTEL_ENDPOINT`). |
+| `--matching-explanations` | Include explanations for why each rule matched. |
+
+## Semgrep Pro Engine flags
+
+These flags require a Semgrep Pro license.
+
+| Flag | Description |
+|------|-------------|
+| `--pro` | Enable Semgrep Pro with interfile (cross-file) analysis. |
+| `--pro-intrafile` | Enable Pro Engine with intrafile (within-file) dataflow analysis only. |
+| `--pro-languages` | Enable Pro Engine language extensions only (no cross-file analysis). |
+| `--oss-only` | Force OSS engine even when logged in. |
+| `--pro-path-sensitive` | Enable path-sensitive analysis (Pro). |
+| `--historical-secrets` | Include git history in Secrets scanning (Pro). |
+| `--allow-untrusted-validators` | Run secret validators even for unknown origins (Pro). |
+| `--secrets` | Run Semgrep Secrets product (Pro). |
+
+## Baseline / diff scanning
+
+<ParamField path="--baseline-commit" type="string">
+  Only report findings introduced since this git commit. Useful for incremental scanning in CI.
+
+  Reads from `SEMGREP_BASELINE_COMMIT` or `SEMGREP_BASELINE_REF`.
+</ParamField>
+
+## Common use cases
+
+<CodeGroup>
+
+```bash Scan a directory
+semgrep scan --config=auto .
+```
+
+```bash Scan with a registry ruleset
+semgrep scan --config=p/owasp-top-ten ./src
+```
+
+```bash Find a pattern in Python
+semgrep scan -e 'exec(...)' --lang=python .
+```
+
+```bash Save JSON results to a file
+semgrep scan --config=auto --json-output=results.json .
+```
+
+```bash Apply autofixes with preview
+semgrep scan --config=auto --autofix --dryrun .
+```
+
+```bash Fail the build if findings exist
+semgrep scan --config=auto --error .
+```
+
+```bash Scan only Python files, skip tests
+semgrep scan --config=auto --include='*.py' --exclude='tests/*' .
+```
+
+</CodeGroup>

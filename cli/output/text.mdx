@@ -1,0 +1,124 @@
+---
+title: "Text output"
+description: "Reference for Semgrep's default human-readable terminal output format."
+---
+
+Text is the default output format for `semgrep scan` and `semgrep ci`. It is optimized for reading in a terminal.
+
+## Enabling text output
+
+```bash
+# Text is the default; these are equivalent:
+semgrep scan --config=auto .
+semgrep scan --config=auto --text .
+```
+
+## Example output
+
+```text
+┌──── ○○○ ────┐
+│ Semgrep CLI │
+└─────────────┘
+
+Running 143 rules...
+
+python/eval_injection.py
+  python.lang.security.audit.eval-injection
+  Line 42: Use of eval() is a security risk.
+
+  42 ┆ result = eval(user_input)
+     ╒══[ python.lang.security.audit.eval-injection ]═══╕
+     │ Avoid using `eval()` on user-controlled input.   │
+     ╘══════════════════════════════════════════════════╛
+
+
+Found 3 findings.
+Ran 143 rules on 27 files.
+```
+
+## Finding fields
+
+Each finding in text output contains the following fields:
+
+| Field | Description |
+|-------|-------------|
+| **File path** | Relative path to the file containing the finding. |
+| **Rule ID** | The unique identifier of the matched rule (e.g., `python.lang.security.audit.eval-injection`). |
+| **Line and column** | Location of the match in the file (`line:col`). |
+| **Code snippet** | The matched lines with surrounding context, annotated with line numbers. |
+| **Message** | Human-readable description of the finding from the rule's `message` field. |
+| **Severity** | `INFO`, `WARNING`, or `ERROR`. Shown in color: blue for INFO, yellow for WARNING, red for ERROR. |
+
+## Flags that affect text output
+
+<ParamField path="--max-lines-per-finding" type="integer" default="10">
+  Maximum number of lines to display per finding. Longer matches are truncated with `...`.
+</ParamField>
+
+<ParamField path="--max-chars-per-line" type="integer" default="160">
+  Maximum characters per line before the line is truncated.
+</ParamField>
+
+<ParamField path="--no-rewrite-rule-ids" type="boolean">
+  Show rule IDs exactly as written in the rule file, without prepending the source path. By default (`--rewrite-rule-ids`), Semgrep prefixes rule IDs with the directory path when loading from a local directory.
+</ParamField>
+
+<ParamField path="--dataflow-traces" type="boolean">
+  Show the full dataflow trace for taint findings (Pro Engine). Each step in the data path from source to sink is displayed.
+</ParamField>
+
+<ParamField path="--time" type="boolean">
+  Append per-rule and per-file timing information at the end of output.
+</ParamField>
+
+<ParamField path="--matching-explanations" type="boolean">
+  Show an explanation of why each rule matched, including which sub-patterns contributed to the match.
+</ParamField>
+
+<ParamField path="--force-color" type="boolean">
+  Force ANSI color output even when writing to a file or pipe (which normally disables color).
+</ParamField>
+
+## Verbose text output
+
+Pass `-v` / `--verbose` to see additional information:
+
+- Files that were skipped and the reason (e.g., too large, excluded by `.semgrepignore`).
+- Rules that were skipped.
+- Per-rule timing summary.
+
+```bash
+semgrep scan --config=auto --verbose .
+```
+
+## Summary line
+
+At the end of a scan, Semgrep prints a summary:
+
+```text
+Ran 143 rules on 27 files: 3 findings.
+```
+
+If `--time` is passed, a timing breakdown is added:
+
+```text
+Ran 143 rules on 27 files: 3 findings.
+
+Slowest rules:
+  python.lang.security.audit.sqli     0.42s
+  javascript.express.security.audit   0.31s
+```
+
+## Suppressing output
+
+Use `-o` / `--output` to write findings to a file instead of stdout:
+
+```bash
+semgrep scan --config=auto --output=findings.txt .
+```
+
+Use `-q` / `--quiet` to suppress all output except findings:
+
+```bash
+semgrep scan --config=auto --quiet .
+```

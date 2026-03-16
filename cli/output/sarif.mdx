@@ -1,0 +1,159 @@
+---
+title: "SARIF output"
+description: "Reference for Semgrep's SARIF output format, with examples for GitHub Code Scanning, Azure DevOps, and other integrations."
+---
+
+Semgrep outputs [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) — Static Analysis Results Interchange Format — an OASIS standard for exchanging static analysis results between tools and platforms.
+
+## Enabling SARIF output
+
+```bash
+# Print SARIF to stdout
+semgrep scan --config=auto --sarif .
+
+# Write SARIF to a file while printing text output to the terminal
+semgrep scan --config=auto --sarif-output=results.sarif .
+```
+
+## Example SARIF output
+
+```json
+{
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Semgrep OSS",
+          "semanticVersion": "1.95.0",
+          "rules": [
+            {
+              "id": "python.lang.security.audit.eval-injection",
+              "name": "python.lang.security.audit.eval-injection",
+              "shortDescription": {
+                "text": "Avoid using eval() on user-controlled input."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "precision": "high",
+                "tags": ["security", "correctness"]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "python.lang.security.audit.eval-injection",
+          "message": {
+            "text": "Avoid using eval() on user-controlled input."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/app.py" },
+                "region": {
+                  "startLine": 42,
+                  "startColumn": 11,
+                  "endLine": 42,
+                  "endColumn": 31
+                }
+              }
+            }
+          ],
+          "level": "error",
+          "suppressions": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Key SARIF fields
+
+| SARIF field | Semgrep source |
+|-------------|----------------|
+| `runs[].tool.driver.name` | `"Semgrep OSS"` or `"Semgrep Pro"` depending on engine. |
+| `runs[].tool.driver.semanticVersion` | Semgrep version. |
+| `runs[].tool.driver.rules[].id` | Rule ID. |
+| `runs[].tool.driver.rules[].shortDescription.text` | Rule `message`. |
+| `runs[].tool.driver.rules[].defaultConfiguration.level` | Mapped from rule severity: `ERROR` → `error`, `WARNING` → `warning`, `INFO` → `note`. |
+| `runs[].results[].ruleId` | Rule ID of the finding. |
+| `runs[].results[].locations[].physicalLocation` | File path and line/column range of the match. |
+| `runs[].results[].suppressions` | Populated when the finding has a `# nosem` comment. |
+
+## Uploading to GitHub Code Scanning
+
+GitHub Code Scanning accepts SARIF files uploaded via the `github/codeql-action/upload-sarif` action.
+
+```yaml GitHub Actions
+name: Semgrep
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep
+        run: semgrep scan --config=auto --sarif-output=semgrep.sarif .
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+```
+
+<Note>
+  The `continue-on-error: true` on the Semgrep step ensures the upload step runs even when Semgrep exits with code `1` (findings found).
+</Note>
+
+## Azure DevOps
+
+Azure DevOps supports SARIF uploads via the **Publish Code Analysis Results** task (requires the **SARIF SAST Scans Tab** extension).
+
+```yaml azure-pipelines.yml
+- script: |
+    pip install semgrep
+    semgrep scan --config=auto --sarif-output=$(Build.ArtifactStagingDirectory)/semgrep.sarif .
+  displayName: Run Semgrep
+  continueOnError: true
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathToPublish: $(Build.ArtifactStagingDirectory)/semgrep.sarif
+    artifactName: CodeAnalysisLogs
+```
+
+## Other SARIF-compatible tools
+
+Any tool or platform that consumes SARIF 2.1.0 can ingest Semgrep output:
+
+- **Visual Studio** and **VS Code** (with the SARIF Viewer extension)
+- **SonarQube** (via SARIF import)
+- **Defect Dojo** (SARIF parser)
+- **OWASP DefectDojo**
+- Any CI system with a SARIF plugin
+
+## Dataflow traces in SARIF
+
+When scanning with the Pro Engine and `--dataflow-traces`, Semgrep includes code flow information in SARIF using the `codeFlows` field. GitHub Code Scanning renders these as interactive path traces in the security alerts view.
+
+```bash
+# Include dataflow traces in SARIF output
+semgrep scan --config=auto --pro --dataflow-traces --sarif-output=results.sarif .
+```

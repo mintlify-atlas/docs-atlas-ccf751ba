@@ -1,0 +1,90 @@
+---
+title: "Pre-commit hooks"
+description: "Run Semgrep automatically before each git commit using the pre-commit framework."
+---
+
+Semgrep provides official [pre-commit](https://pre-commit.com) hooks so you can catch issues before they enter your repository. The hooks are defined in the Semgrep repository's [`.pre-commit-hooks.yaml`](https://github.com/semgrep/semgrep/blob/develop/.pre-commit-hooks.yaml).
+
+<Warning>
+  Pre-commit hooks run on every commit, so scan time directly affects developer velocity. Scope your hook to changed files and avoid wide-open configs like `--config=auto` on large codebases. Prefer targeted rule packs (for example, `p/python`) or a local rules directory to keep scans fast.
+</Warning>
+
+## Available hooks
+
+The Semgrep repository defines the following hooks:
+
+| Hook ID | Description |
+|---------|-------------|
+| `semgrep` | Runs `semgrep` on staged files. Uses the Python environment; fast and the recommended default. |
+| `semgrep-ci` | Runs `semgrep ci --dry-run --baseline-commit HEAD`. Does not accept filenames; scans the full repository in dry-run mode. |
+| `semgrep-docker` | Runs the `semgrep/semgrep:latest` Docker image. Useful when you want to pin to the published release without installing Python dependencies. |
+| `semgrep-docker-develop` | Runs the `returntocorp/semgrep:develop` Docker image. Useful for testing against the latest development build. |
+
+The `semgrep` hook is the right choice for most projects. Docker-based hooks are available for cases where you prefer to avoid Python toolchain setup, but they are significantly slower.
+
+## Setup
+
+<Steps>
+  <Step title="Install pre-commit">
+    Install the pre-commit framework using pip or Homebrew:
+
+    ```bash
+    pip install pre-commit
+    # or
+    brew install pre-commit
+    ```
+  </Step>
+  <Step title="Add a .pre-commit-config.yaml">
+    Create or update `.pre-commit-config.yaml` in your repository root. Reference the Semgrep repository and choose a pinned version tag:
+
+    ```yaml .pre-commit-config.yaml
+    repos:
+      - repo: https://github.com/semgrep/semgrep
+        rev: v1.155.0
+        hooks:
+          - id: semgrep
+            args: ['--config', 'auto', '--error']
+    ```
+
+    The `--error` flag causes the hook to exit with a non-zero code when Semgrep reports findings, blocking the commit.
+  </Step>
+  <Step title="Install the hooks">
+    Install the hooks into your local git repository:
+
+    ```bash
+    pre-commit install
+    ```
+
+    After this step, Semgrep runs automatically on every `git commit`.
+  </Step>
+  <Step title="Verify the setup">
+    Run the hook manually across all tracked files to confirm it works:
+
+    ```bash
+    pre-commit run --all-files
+    ```
+  </Step>
+</Steps>
+
+## Passing custom rules
+
+You can point the hook at any config source supported by Semgrep, including local rule files and rule packs:
+
+```yaml .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/semgrep/semgrep
+    rev: v1.155.0
+    hooks:
+      # Use a community rule pack
+      - id: semgrep
+        name: Semgrep Python
+        types: [python]
+        args: ['--config', 'p/python', '--error']
+
+      # Use a local rules file
+      - id: semgrep
+        name: Semgrep custom rules
+        args: ['--config', './rules/custom.yml', '--error']
+```
+
+You can define the same hook ID multiple times with different `args` and `types` values to run separate rule sets in a single commit.

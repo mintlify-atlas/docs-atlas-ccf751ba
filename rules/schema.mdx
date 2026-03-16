@@ -1,0 +1,267 @@
+---
+title: "Rule schema"
+description: "Complete reference for the Semgrep YAML rule schema, including all top-level fields, their types, and how they compose."
+---
+
+Every Semgrep rule is a YAML document containing one or more rule objects under a top-level `rules` key. Each rule specifies what to find (`pattern*` fields), where to find it (`languages`, `paths`), and how to report it (`message`, `severity`, `metadata`).
+
+## Minimal valid rule
+
+```yaml
+rules:
+  - id: hardcoded-secret
+    pattern: password = "..."
+    message: Hardcoded password detected in $FILE
+    severity: ERROR
+    languages: [python]
+```
+
+## Top-level fields
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the rule within the rule file. Must be unique across the file. Used in output, suppressions (`# nosemgrep: rule-id`), and CI blocking logic.
+
+  ```yaml
+  id: sql-injection-raw-query
+  ```
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Human-readable description of the finding. Displayed in CLI output and the Semgrep AppSec Platform. Supports metavariable interpolation — any `$METAVAR` captured by your pattern is substituted automatically.
+
+  ```yaml
+  message: User input in `$SINK` is not sanitized before use in a SQL query.
+  ```
+</ParamField>
+
+<ParamField path="severity" type="string" required>
+  Severity level of the finding. Accepted values: `INFO`, `WARNING`, `ERROR`.
+
+  ```yaml
+  severity: ERROR
+  ```
+
+  See [Severity levels](/rules/severity-levels) for guidance on when to use each level.
+</ParamField>
+
+<ParamField path="languages" type="string[]" required>
+  List of language identifiers this rule targets. Semgrep uses this to select which files to scan and which parser to use.
+
+  Common values: `python`, `javascript`, `typescript`, `java`, `go`, `ruby`, `c`, `cpp`, `rust`, `scala`, `kotlin`, `swift`, `php`, `json`, `yaml`, `generic`.
+
+  ```yaml
+  languages: [python, javascript]
+  ```
+
+  Specifying `javascript` automatically adds `typescript` as well.
+</ParamField>
+
+<ParamField path="pattern" type="string">
+  A single pattern to match. The simplest way to write a rule. Use `$X` for metavariables and `...` for ellipsis matching.
+
+  ```yaml
+  pattern: subprocess.run($CMD, shell=True, ...)
+  ```
+
+  Mutually exclusive with `patterns`, `pattern-either`, and `pattern-regex` at the top level.
+</ParamField>
+
+<ParamField path="patterns" type="list">
+  AND-combination of pattern operators. All operators in the list must match (or, for negation operators, must not match). Use this when you need to combine multiple constraints.
+
+  ```yaml
+  patterns:
+    - pattern: $FUNC($INPUT)
+    - pattern-not: $FUNC(sanitize($INPUT))
+    - metavariable-regex:
+        metavariable: $FUNC
+        regex: ^(exec|eval|system)$
+  ```
+
+  See [Pattern operators](/rules/operators) for the full list of operators you can use inside `patterns`.
+</ParamField>
+
+<ParamField path="pattern-either" type="list">
+  OR-combination of patterns. A match is reported if any pattern in the list matches.
+
+  ```yaml
+  pattern-either:
+    - pattern: os.system($CMD)
+    - pattern: subprocess.call($CMD, shell=True)
+    - pattern: eval($CODE)
+  ```
+</ParamField>
+
+<ParamField path="pattern-regex" type="string">
+  Regular expression matched against file content. Useful for secrets, license headers, or any string-level check that is language-agnostic.
+
+  ```yaml
+  pattern-regex: 'AKIA[0-9A-Z]{16}'
+  ```
+</ParamField>
+
+<ParamField path="fix" type="string">
+  Autofix string. When Semgrep runs with `--autofix`, it replaces the matched code with this string. Metavariables captured in the pattern are substituted.
+
+  ```yaml
+  fix: hashlib.sha256($DATA).hexdigest()
+  ```
+</ParamField>
+
+<ParamField path="fix-regex" type="object">
+  Regex-based autofix. Useful when the replacement depends on a regex substitution rather than a simple metavariable swap.
+
+  <Expandable title="fix-regex fields">
+    <ParamField path="fix-regex.regex" type="string" required>
+      Regular expression to match within the found range.
+    </ParamField>
+    <ParamField path="fix-regex.replacement" type="string" required>
+      Replacement string. Use `\1`, `\2`, etc. for capture groups.
+    </ParamField>
+    <ParamField path="fix-regex.count" type="number">
+      Maximum number of replacements to make. Defaults to all occurrences.
+    </ParamField>
+  </Expandable>
+
+  ```yaml
+  fix-regex:
+    regex: 'MD5'
+    replacement: 'SHA256'
+  ```
+</ParamField>
+
+<ParamField path="metadata" type="object">
+  Arbitrary key-value metadata attached to the rule. Common fields used by the Semgrep AppSec Platform and rule registries:
+
+  <Expandable title="common metadata fields">
+    <ParamField path="metadata.cwe" type="string | string[]">
+      CWE identifier, e.g. `"CWE-89: SQL Injection"`.
+    </ParamField>
+    <ParamField path="metadata.owasp" type="string | string[]">
+      OWASP category, e.g. `"A03:2021 - Injection"`.
+    </ParamField>
+    <ParamField path="metadata.confidence" type="string">
+      `HIGH`, `MEDIUM`, or `LOW`.
+    </ParamField>
+    <ParamField path="metadata.likelihood" type="string">
+      `HIGH`, `MEDIUM`, or `LOW`.
+    </ParamField>
+    <ParamField path="metadata.impact" type="string">
+      `HIGH`, `MEDIUM`, or `LOW`.
+    </ParamField>
+    <ParamField path="metadata.technology" type="string[]">
+      Technologies involved, e.g. `[django, flask]`.
+    </ParamField>
+    <ParamField path="metadata.references" type="string[]">
+      Links to external documentation or CVE entries.
+    </ParamField>
+    <ParamField path="metadata.category" type="string">
+      Rule category, e.g. `security`, `correctness`, `performance`.
+    </ParamField>
+  </Expandable>
+
+  ```yaml
+  metadata:
+    cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+    owasp: "A03:2021 - Injection"
+    confidence: HIGH
+    category: security
+    technology: [django]
+    references:
+      - https://owasp.org/Top10/A03_2021-Injection/
+  ```
+</ParamField>
+
+<ParamField path="options" type="object">
+  Per-rule engine configuration. Lets you tune matching behavior for a specific rule without affecting other rules.
+
+  <Expandable title="common options fields">
+    <ParamField path="options.constant_propagation" type="boolean" default="true">
+      Enable constant propagation during matching.
+    </ParamField>
+    <ParamField path="options.symbolic_propagation" type="boolean" default="false">
+      Enable symbolic propagation (requires `constant_propagation: true`).
+    </ParamField>
+    <ParamField path="options.taint_assume_safe_functions" type="boolean" default="false">
+      In taint mode, assume that function calls not explicitly listed as sources or propagators do not propagate taint.
+    </ParamField>
+    <ParamField path="options.taint_assume_safe_indexes" type="boolean" default="false">
+      In taint mode, assume that array/dict indexing does not propagate taint.
+    </ParamField>
+    <ParamField path="options.interfile" type="boolean" default="false">
+      Consider this rule for cross-file (interfile) analysis.
+    </ParamField>
+    <ParamField path="options.generic_engine" type="string" default="spacegrep">
+      Generic engine to use when `languages: [generic]`. Values: `spacegrep`, `aliengrep`.
+    </ParamField>
+  </Expandable>
+
+  ```yaml
+  options:
+    constant_propagation: false
+    taint_assume_safe_functions: true
+  ```
+</ParamField>
+
+<ParamField path="paths" type="object">
+  Restrict which files this rule runs on. You can include or exclude files by glob pattern.
+
+  <Expandable title="paths fields">
+    <ParamField path="paths.include" type="string[]">
+      Only scan files matching one of these glob patterns.
+    </ParamField>
+    <ParamField path="paths.exclude" type="string[]">
+      Skip files matching one of these glob patterns.
+    </ParamField>
+  </Expandable>
+
+  ```yaml
+  paths:
+    include:
+      - "src/**"
+    exclude:
+      - "**/*_test.py"
+      - "**/tests/**"
+  ```
+</ParamField>
+
+<ParamField path="mode" type="string" default="search">
+  Analysis mode. Accepted values:
+
+  - `search` (default) — standard pattern matching.
+  - `taint` — dataflow taint tracking. Requires `pattern-sources` and `pattern-sinks` instead of `pattern`.
+
+  ```yaml
+  mode: taint
+  ```
+
+  See [Taint analysis](/rules/taint-analysis) for details.
+</ParamField>
+
+## Complete example rule
+
+The following rule detects raw SQL string formatting in Django views and provides an autofix:
+
+```yaml
+rules:
+  - id: django-raw-sql-injection
+    patterns:
+      - pattern: $MODEL.objects.raw($QUERY % $INPUT)
+      - pattern-not: $MODEL.objects.raw($QUERY % sanitize($INPUT))
+    message: >
+      Potential SQL injection: `$INPUT` is interpolated directly into a raw SQL
+      query. Use parameterized queries instead:
+      `$MODEL.objects.raw($QUERY, [$INPUT])`.
+    fix: $MODEL.objects.raw($QUERY, [$INPUT])
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      category: security
+      technology: [django]
+    paths:
+      exclude:
+        - "**/migrations/**"
+```

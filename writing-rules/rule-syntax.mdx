@@ -1,0 +1,286 @@
+---
+title: "Rule syntax reference"
+description: "Complete reference for every field in a Semgrep rule: id, pattern, message, severity, languages, metadata, options, fix, fix-regex, and paths."
+keywords: ["semgrep rule syntax", "rule fields", "rule schema", "YAML rule format"]
+---
+
+Every Semgrep rule is a YAML object in a `rules:` list. This page documents every field you can use.
+
+## Complete example
+
+The following rule uses nearly every available field:
+
+```yaml
+rules:
+  - id: sql-injection-string-concat
+    message: >
+      SQL query built by string concatenation. Use parameterized queries
+      to prevent SQL injection. Matched query: $QUERY
+    severity: ERROR
+    languages: [python]
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      owasp: "A03:2021 - Injection"
+      confidence: HIGH
+      author: security-team
+    options:
+      symbolic_propagation: true
+    patterns:
+      - pattern: $QUERY = $PREFIX + $INPUT
+      - pattern-inside: |
+          def $FUNC(...):
+            ...
+            $DB.execute(...)
+            ...
+      - pattern-not: $QUERY = $PREFIX + "..."
+    fix: "$DB.execute($QUERY, ($INPUT,))"
+    paths:
+      include:
+        - "src/"
+      exclude:
+        - "tests/"
+        - "**/migrations/"
+```
+
+## Required fields
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the rule. Must be unique within the rule file and across any registry you publish to. Use lowercase letters, digits, and hyphens (`-`).
+
+  ```yaml
+  id: use-parameterized-query
+  ```
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  The message displayed when the rule fires. Shown in the terminal output, IDE, and Semgrep AppSec Platform. You can reference bound metavariables directly (e.g., `$VAR`) to include matched code snippets.
+
+  ```yaml
+  message: "Found a call to $FUNC with user-controlled input $INPUT."
+  ```
+</ParamField>
+
+<ParamField path="severity" type="string" required>
+  The severity level of findings produced by this rule. Affects exit codes and filtering.
+
+  Accepted values: `INFO`, `WARNING`, `ERROR`
+
+  ```yaml
+  severity: ERROR
+  ```
+</ParamField>
+
+<ParamField path="languages" type="string[]" required>
+  List of language identifiers this rule targets. Semgrep only runs the rule against files that match one of the listed languages.
+
+  Common values: `python`, `javascript`, `typescript`, `java`, `go`, `ruby`, `rust`, `c`, `cpp`, `csharp`, `php`, `kotlin`, `scala`, `swift`, `generic`, `regex`
+
+  ```yaml
+  languages: [python, javascript]
+  ```
+
+  <Note>
+  Adding `javascript` automatically includes `typescript` as well, because TypeScript is a superset of JavaScript.
+  </Note>
+</ParamField>
+
+## Pattern fields (at least one required)
+
+You must supply exactly one of `pattern`, `patterns`, `pattern-either`, or `pattern-regex` at the top level of the rule.
+
+<ParamField path="pattern" type="string">
+  A single pattern to match. Semgrep reports every location where this pattern matches.
+
+  ```yaml
+  pattern: os.system($CMD)
+  ```
+</ParamField>
+
+<ParamField path="patterns" type="array">
+  A list of pattern operators combined with **AND** logic. All operators in the list must be satisfied simultaneously on overlapping ranges. Every `patterns:` block must contain at least one positive pattern (i.e., a `pattern:` or `pattern-inside:` entry).
+
+  ```yaml
+  patterns:
+    - pattern: cursor.execute($QUERY)
+    - pattern-not: cursor.execute("SELECT ...")
+    - pattern-not-inside: |
+        def test_$FUNC(...):
+          ...
+  ```
+
+  Operators you can use inside `patterns:`:
+
+  | Operator | Meaning |
+  |---|---|
+  | `pattern` | Positive match |
+  | `pattern-not` | Exclude matches that also match this |
+  | `pattern-inside` | Match must occur inside this context |
+  | `pattern-not-inside` | Match must not occur inside this context |
+  | `pattern-either` | OR of a sub-list of patterns |
+  | `pattern-regex` | Regex match on the raw text |
+  | `metavariable-regex` | Constrain a bound metavariable using regex |
+  | `metavariable-pattern` | Constrain a bound metavariable using a sub-rule |
+  | `metavariable-comparison` | Compare a metavariable value numerically or lexicographically |
+  | `focus-metavariable` | Focus the reported range on a specific metavariable |
+</ParamField>
+
+<ParamField path="pattern-either" type="array">
+  A list of patterns combined with **OR** logic. Semgrep reports a match if any one of the listed patterns matches.
+
+  ```yaml
+  pattern-either:
+    - pattern: subprocess.call($CMD, shell=True)
+    - pattern: subprocess.Popen($CMD, shell=True)
+    - pattern: os.system($CMD)
+  ```
+</ParamField>
+
+<ParamField path="pattern-regex" type="string">
+  Match file content using a PCRE-compatible regular expression. Operates on raw text, not the AST. Commonly used with `languages: [generic]` for secrets detection.
+
+  ```yaml
+  pattern-regex: 'AKIA[0-9A-Z]{16}'
+  ```
+</ParamField>
+
+## Optional fields
+
+<ParamField path="metadata" type="object">
+  Arbitrary key-value pairs attached to the rule. Semgrep does not interpret these values — they are passed through to output and used by tooling for filtering and reporting.
+
+  Common metadata keys:
+
+  | Key | Description |
+  |---|---|
+  | `cwe` | CWE identifier (e.g., `"CWE-89: SQL Injection"`) |
+  | `owasp` | OWASP category (e.g., `"A03:2021 - Injection"`) |
+  | `confidence` | `LOW`, `MEDIUM`, `HIGH` |
+  | `likelihood` | `LOW`, `MEDIUM`, `HIGH` |
+  | `impact` | `LOW`, `MEDIUM`, `HIGH` |
+  | `technology` | Framework or library (e.g., `["flask", "django"]`) |
+  | `author` | Rule author |
+  | `references` | Links to advisory or documentation |
+
+  ```yaml
+  metadata:
+    cwe: "CWE-78: OS Command Injection"
+    owasp: "A03:2021 - Injection"
+    confidence: HIGH
+    author: security-team
+    references:
+      - https://owasp.org/www-community/attacks/Command_Injection
+  ```
+</ParamField>
+
+<ParamField path="options" type="object">
+  Rule-level options that configure the matching engine. These change which matches are found — they are not performance hints.
+
+  Key options:
+
+  | Option | Default | Description |
+  |---|---|---|
+  | `constant_propagation` | `true` | Propagate constant values through assignments |
+  | `symbolic_propagation` | `false` | Track symbolic values (variables that hold other variables) through assignments |
+  | `taint_assume_safe_functions` | `false` | Assume function calls not explicitly listed as sources or propagators sanitize tainted data |
+  | `taint_assume_safe_indexes` | `false` | Assume array/dict indexing does not propagate taint |
+  | `taint_assume_safe_comparisons` | `false` | Assume comparison operators do not propagate taint |
+  | `taint_unify_mvars` | `false` | Require that metavariables common to a source and sink bind the same value |
+  | `ac_matching` | `true` | Enable associative-commutative matching for arithmetic |
+  | `commutative_boolop` | `false` | Treat `&&` and `\|\|` as commutative |
+  | `interfile` | `false` | Enable cross-file (inter-procedural) analysis |
+
+  ```yaml
+  options:
+    symbolic_propagation: true
+    taint_assume_safe_functions: true
+  ```
+</ParamField>
+
+<ParamField path="fix" type="string">
+  A replacement string applied when `--autofix` is run. Metavariables bound during matching are interpolated into the fix string.
+
+  ```yaml
+  fix: "$OBJ.execute($QUERY, ($INPUT,))"
+  ```
+
+  See [Autofix](/writing-rules/autofix) for full details.
+</ParamField>
+
+<ParamField path="fix-regex" type="object">
+  A regex-based autofix. Uses `regex` to match the matched code and `replacement` to rewrite it. Supports capture groups.
+
+  ```yaml
+  fix-regex:
+    regex: 'MD5\.new\(\)'
+    replacement: 'SHA256.new()'
+  ```
+
+  Fields:
+  - `regex` (string, required): PCRE regex to apply to the matched text
+  - `replacement` (string, required): Replacement string; supports `\1`, `\2`, etc. for capture groups
+  - `count` (integer, optional): Maximum number of replacements to perform
+
+  See [Autofix](/writing-rules/autofix) for full details.
+</ParamField>
+
+<ParamField path="paths" type="object">
+  Restrict the rule to specific file paths. Both `include` and `exclude` accept glob patterns.
+
+  ```yaml
+  paths:
+    include:
+      - "src/**/*.py"
+      - "app/"
+    exclude:
+      - "tests/"
+      - "**/*_test.py"
+      - "**/migrations/"
+  ```
+
+  - `include`: Only scan files matching these patterns
+  - `exclude`: Skip files matching these patterns
+
+  `exclude` takes precedence over `include`.
+</ParamField>
+
+## Using `patterns` for AND logic
+
+The `patterns:` key combines operators with AND semantics. All conditions must hold on overlapping code ranges:
+
+```yaml
+rules:
+  - id: unsafe-deserialization
+    patterns:
+      - pattern: pickle.loads($DATA)          # Must match
+      - pattern-not: pickle.loads(b"...")     # Must NOT match
+      - pattern-inside: |                     # Must be inside a view function
+          @app.route(...)
+          def $VIEW(...):
+            ...
+    message: "Unsafe deserialization of user data in a web handler"
+    severity: ERROR
+    languages: [python]
+```
+
+## Using `pattern-either` for OR logic
+
+The `pattern-either:` key matches when any one of the listed patterns matches:
+
+```yaml
+rules:
+  - id: dangerous-exec
+    pattern-either:
+      - pattern: os.system($CMD)
+      - pattern: subprocess.call($CMD, shell=True)
+      - pattern: subprocess.Popen($CMD, shell=True)
+      - pattern: commands.getoutput($CMD)
+    message: "Potentially dangerous OS command execution with input: $CMD"
+    severity: ERROR
+    languages: [python]
+```
+
+## Taint mode
+
+Rules can use `mode: taint` to enable data-flow tracking. In taint mode, the top-level pattern fields are replaced with `pattern-sources`, `pattern-sinks`, `pattern-sanitizers`, and `pattern-propagators`.
+
+See [Data-flow analysis](/writing-rules/data-flow) for complete documentation.

@@ -1,0 +1,299 @@
+---
+title: "Common issues"
+description: "Solutions to the most frequently encountered problems when running Semgrep."
+---
+
+<AccordionGroup>
+  <Accordion title="Scan is slow">
+    Large repositories with many files or complex rules are the most common cause of slow scans.
+
+    **Run scans in parallel**
+
+    By default, Semgrep uses all available CPU cores. If it isn't already, make sure parallelism is active:
+
+    ```bash
+    semgrep --config=auto -j 8 .
+    ```
+
+    **Skip large files**
+
+    Files over 1 MB are skipped by default. If you have many files just below this threshold, lower the limit:
+
+    ```bash
+    semgrep --config=auto --max-target-bytes=500000 .
+    ```
+
+    **Ignore irrelevant paths**
+
+    Add a `.semgrepignore` file to exclude directories you don't need to scan:
+
+    ```
+    node_modules/
+    vendor/
+    generated/
+    *.pb.go
+    ```
+
+    **Shorten the per-rule timeout**
+
+    The default timeout is 5 seconds per rule per file. Lower it to skip slow rules faster:
+
+    ```bash
+    semgrep --config=auto --timeout=3 .
+    ```
+
+    **Profile the scan**
+
+    Use `--time` to identify which rules and files are consuming the most time:
+
+    ```bash
+    semgrep --config=auto --time .
+    ```
+  </Accordion>
+
+  <Accordion title="Too many false positives">
+    If Semgrep is reporting too many findings that don't represent real issues, you have several options.
+
+    **Suppress findings inline**
+
+    For a finding you've reviewed and accepted, add a `# nosemgrep` comment to silence it:
+
+    ```python
+    result = eval(expression)  # nosemgrep: python.lang.security.audit.eval-detected
+    ```
+
+    **Filter by severity**
+
+    Run only high-severity rules:
+
+    ```bash
+    semgrep --config=auto --severity=ERROR .
+    ```
+
+    **Use a more targeted rule config**
+
+    Instead of `--config=auto`, pick a ruleset that's more relevant to your use case:
+
+    ```bash
+    # Security-focused rules only
+    semgrep --config=p/security-audit .
+
+    # OWASP Top 10 rules
+    semgrep --config=p/owasp-top-ten .
+    ```
+
+    **Exclude paths from specific rules**
+
+    If a rule produces false positives only in certain directories, use the `paths:` field in the rule definition to exclude those directories.
+  </Accordion>
+
+  <Accordion title="Rule not matching expected code">
+    If you've written a rule and it's not matching code you expect it to match, try the following.
+
+    **Test in the Playground**
+
+    Paste your rule and target code into the [Semgrep Playground](https://semgrep.dev/editor) to interactively debug the pattern.
+
+    **Check the language**
+
+    Make sure the `languages:` field in your rule matches the language of the files you're scanning:
+
+    ```yaml
+    rules:
+      - id: my-rule
+        languages: [python]  # must match the file extension
+    ```
+
+    **Verify the pattern syntax**
+
+    - Metavariables match single expressions: `$X` matches `foo()` but not `foo(); bar()`
+    - Use `...` (ellipsis) to match multiple statements or arguments: `foo(...)`
+    - Semgrep matches semantically, so whitespace and minor formatting differences don't matter, but syntax must be valid for the target language
+
+    **Run with verbose output**
+
+    Use `--verbose` to see which files and rules are being evaluated:
+
+    ```bash
+    semgrep --config=myrule.yaml --verbose path/to/file.py
+    ```
+
+    **Validate the rule**
+
+    ```bash
+    semgrep --validate --config=myrule.yaml
+    ```
+  </Accordion>
+
+  <Accordion title='"No rules specified" error'>
+    Semgrep requires you to specify which rules to run with the `--config` flag.
+
+    ```
+    Error: No rules specified.
+    Run with --help to see usage.
+    ```
+
+    **Fix:** Pass a `--config` argument:
+
+    ```bash
+    # Use auto-detection from the registry
+    semgrep --config=auto .
+
+    # Use a local rule file
+    semgrep --config=path/to/rules.yaml .
+
+    # Use a registry ruleset
+    semgrep --config=p/python .
+
+    # Use a specific registry rule
+    semgrep --config=r/python.lang.security.audit.eval-detected .
+    ```
+
+    If you want to run a pattern directly without a rule file, use `-e` and `--lang`:
+
+    ```bash
+    semgrep -e 'eval(...)' --lang=python .
+    ```
+  </Accordion>
+
+  <Accordion title="Permission errors">
+    Permission errors can occur in a few different situations.
+
+    **Settings file permissions**
+
+    Semgrep needs write access to `~/.semgrep/` to store settings and logs. If this directory is owned by another user (common in Docker containers running as root), you may see permission errors.
+
+    Fix by setting `SEMGREP_SETTINGS_FILE` to a writable path:
+
+    ```bash
+    export SEMGREP_SETTINGS_FILE=/tmp/semgrep-settings.yml
+    semgrep --config=auto .
+    ```
+
+    **Virtual environment issues**
+
+    If you installed Semgrep inside a virtual environment and are running it outside, the `semgrep` command may not be found or may use a different Python interpreter.
+
+    ```bash
+    # Activate the virtual environment first
+    source .venv/bin/activate
+    semgrep --version
+    ```
+
+    Or use `python -m semgrep`:
+
+    ```bash
+    python3 -m semgrep --config=auto .
+    ```
+  </Accordion>
+
+  <Accordion title="Semgrep crashes or runs out of memory">
+    For very large files or complex rules, Semgrep may exhaust available memory.
+
+    **Set a memory limit**
+
+    Use `--max-memory` to cap the engine's memory usage in megabytes. Files that exceed the limit are skipped with a warning.
+
+    ```bash
+    semgrep --config=auto --max-memory=2000 .
+    ```
+
+    **Skip large files**
+
+    Lower the maximum target size to avoid analyzing very large files:
+
+    ```bash
+    semgrep --config=auto --max-target-bytes=250000 .
+    ```
+
+    **Reduce parallelism**
+
+    Each parallel worker uses memory independently. Reducing the job count can help on memory-constrained systems:
+
+    ```bash
+    semgrep --config=auto -j 2 .
+    ```
+
+    **Exclude specific large files or directories**
+
+    Add entries to `.semgrepignore` for files you know are too large or complex to benefit from scanning.
+  </Accordion>
+
+  <Accordion title="Rules not found from registry">
+    If Semgrep cannot fetch rules from the registry, you'll see an error like:
+
+    ```
+    Could not fetch rules from https://semgrep.dev/...
+    ```
+
+    **Check network connectivity**
+
+    Semgrep needs to reach `semgrep.dev` to download registry rules. Verify you have outbound HTTPS access:
+
+    ```bash
+    curl -I https://semgrep.dev
+    ```
+
+    **Check the `--config` format**
+
+    Registry references follow specific formats:
+
+    ```bash
+    # Ruleset (starts with p/)
+    semgrep --config=p/python .
+
+    # Individual rule (starts with r/)
+    semgrep --config=r/python.lang.security.audit.eval-detected .
+
+    # Auto-detect
+    semgrep --config=auto .
+    ```
+
+    **Use local rules as a fallback**
+
+    If the registry is unavailable, you can download rules locally and reference the file:
+
+    ```bash
+    # Download a ruleset to a file
+    curl -o python-rules.yaml https://semgrep.dev/c/p/python
+
+    # Run with the local file
+    semgrep --config=python-rules.yaml .
+    ```
+  </Accordion>
+
+  <Accordion title="Exit code 1 in CI">
+    Semgrep exits with code `1` when it finds at least one finding. Many CI systems treat a non-zero exit code as a pipeline failure.
+
+    **Semgrep exit codes:**
+
+    | Code | Meaning |
+    |------|---------|
+    | `0` | Success — no findings |
+    | `1` | Findings were reported |
+    | `2` | Invalid usage or configuration error |
+    | `3` | Unexpected internal error |
+
+    **To allow findings without failing the pipeline**, use `|| true` or check the exit code explicitly:
+
+    ```bash
+    # Continue even if findings are reported
+    semgrep --config=auto . || true
+
+    # Capture exit code and handle it
+    semgrep --config=auto . ; EXIT_CODE=$?
+    if [ "$EXIT_CODE" -eq 1 ]; then
+      echo "Findings reported — review before merging"
+    elif [ "$EXIT_CODE" -gt 1 ]; then
+      echo "Semgrep error: $EXIT_CODE"
+      exit $EXIT_CODE
+    fi
+    ```
+
+    **To fail only on high-severity findings**, filter by severity:
+
+    ```bash
+    semgrep --config=auto --severity=ERROR .
+    ```
+  </Accordion>
+</AccordionGroup>

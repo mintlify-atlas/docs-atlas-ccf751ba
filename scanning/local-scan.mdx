@@ -1,0 +1,140 @@
+---
+title: "Local scanning"
+description: "Run Semgrep on your local machine during development to find bugs and enforce coding standards."
+---
+
+You can run Semgrep directly from your terminal to scan code on your local machine. Local scans are fully offline by default — **code is never uploaded**.
+
+## Basic scan commands
+
+The `semgrep scan` command (aliased to `semgrep`) accepts a config source and one or more targets.
+
+```bash
+# Auto-select rules from the Semgrep registry based on detected languages
+semgrep --config=auto .
+
+# Use a community rule pack for Python
+semgrep --config=p/python .
+
+# Use a local rules directory
+semgrep --config=./rules/ .
+
+# Match an inline pattern against a specific directory
+semgrep -e '$X == $X' --lang=python src/
+```
+
+`--config=auto` detects the languages in your project and fetches matching rule packs from the registry. It is the recommended starting point for new users.
+
+## Target selection
+
+You can pass files, directories, or glob patterns as scan targets:
+
+```bash
+# Scan a single file
+semgrep --config=auto src/app.py
+
+# Scan a directory recursively
+semgrep --config=auto src/
+
+# Scan the current directory
+semgrep --config=auto .
+```
+
+Semgrep automatically detects each file's language by extension and skips files with unknown extensions. Pass `--scan-unknown-extensions` to attempt scanning unrecognized file types.
+
+### Filtering with `--include` and `--exclude`
+
+Use `--include` to restrict scanning to files matching a glob pattern, and `--exclude` to skip matching files:
+
+```bash
+# Only scan Python files
+semgrep --config=auto --include='*.py' .
+
+# Exclude test files
+semgrep --config=auto --exclude='tests/' .
+
+# Combine both flags
+semgrep --config=auto --include='*.py' --exclude='*_test.py' src/
+```
+
+Both flags accept glob patterns and can be passed multiple times.
+
+### Setting the language with `--lang`
+
+When running an inline pattern with `-e`, you must specify the language:
+
+```bash
+semgrep -e 'exec(...)' --lang=python .
+semgrep -e 'eval(...)' --lang=javascript src/
+```
+
+## Output formats
+
+Semgrep supports several output formats. Use `--output` to write results to a file instead of stdout.
+
+<CodeGroup>
+
+```bash text (default)
+# Human-readable output to stdout
+semgrep --config=auto .
+```
+
+```bash json
+# Machine-readable JSON
+semgrep --config=auto --json .
+
+# Save JSON results to a file
+semgrep --config=auto --json --output=results.json .
+```
+
+```bash sarif
+# SARIF format for IDE and CI tool integration
+semgrep --config=auto --sarif .
+
+# Save SARIF results to a file
+semgrep --config=auto --sarif --output=results.sarif .
+```
+
+</CodeGroup>
+
+### Filtering by severity
+
+Use `--severity` to report only findings at or above a given level. Valid values are `INFO`, `WARNING`, and `ERROR`:
+
+```bash
+# Report only ERROR-level findings
+semgrep --config=auto --severity=ERROR .
+
+# Report WARNING and ERROR findings
+semgrep --config=auto --severity=WARNING .
+```
+
+## Performance
+
+Semgrep runs rule matching in parallel. Use `-j` (or `--jobs`) to control the number of parallel worker processes:
+
+```bash
+# Use 4 parallel workers
+semgrep --config=auto -j 4 .
+
+# Use all available CPU cores
+semgrep --config=auto -j 0 .
+```
+
+The default number of workers is set automatically based on available CPUs.
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Scan completed with no findings |
+| `1`  | Scan completed and findings were reported |
+| `2`  | An error occurred (bad config, parse error, etc.) |
+
+Use `--error` to force exit code `1` whenever findings are present (useful in scripts and CI pipelines).
+
+## Ignoring files
+
+<Note>
+  Semgrep respects a `.semgrepignore` file in your project root. List file paths and glob patterns in this file — one per line — to exclude them from all scans. The format is similar to `.gitignore`. By default, Semgrep also respects your `.gitignore` when scanning inside a git repository.
+</Note>

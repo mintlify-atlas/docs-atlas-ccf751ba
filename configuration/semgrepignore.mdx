@@ -1,0 +1,139 @@
+---
+title: "Ignoring files and findings"
+description: "Control which files Semgrep scans and suppress individual findings using .semgrepignore and inline comments."
+---
+
+Semgrep gives you several ways to tell it what to ignore: a `.semgrepignore` file for paths, inline `# nosemgrep` comments for individual findings, and CLI flags for one-off overrides.
+
+## The `.semgrepignore` file
+
+A `.semgrepignore` file works like `.gitignore`. Place it in the root of your repository, and Semgrep will skip any file or directory that matches a pattern in it.
+
+```
+# Ignore test files
+tests/
+*_test.py
+
+# Ignore generated files
+generated/
+*.pb.go
+
+# Ignore vendored dependencies
+vendor/
+node_modules/
+```
+
+<Tip>
+  Commit `.semgrepignore` to version control alongside your code. This keeps your ignore rules consistent across local runs, CI, and your team's machines.
+</Tip>
+
+### Pattern syntax
+
+`.semgrepignore` uses `.gitignore` syntax with a few caveats:
+
+- A trailing slash matches a directory anywhere in the project tree: `dist/`
+- A leading slash anchors the pattern to the project root: `/build/`
+- A pattern without slashes matches anywhere in the tree: `*.min.js`
+- The explicit include syntax (`!kept/`) and multi-character expansion (`*.py[cod]`) are not supported in the classic `.semgrepignore` format
+
+To pull in patterns from another file, use `:include`:
+
+```
+:include .gitignore
+:include scripts/ci-ignore-patterns
+```
+
+### Default ignored paths
+
+Even without a `.semgrepignore`, Semgrep automatically skips several directories:
+
+- `node_modules/`
+- `.git/`
+- Files listed in your `.gitignore` (unless you pass `--no-git-ignore`)
+
+Files larger than 1 MB are also skipped by default. You can change this threshold with `--max-target-bytes`.
+
+## Suppressing individual findings with `# nosemgrep`
+
+To suppress a single finding on a specific line, add a `# nosemgrep` comment to that line:
+
+```python
+password = "hardcoded"  # nosemgrep
+```
+
+To suppress only a specific rule and leave others active, add the rule ID after the comment marker:
+
+```python
+password = "hardcoded"  # nosemgrep: python.lang.security.hardcoded-password
+```
+
+You can suppress multiple rules at once by separating rule IDs with commas:
+
+```python
+password = "hardcoded"  # nosemgrep: rule-id-1, rule-id-2
+```
+
+You can also place the comment on the line immediately before the finding:
+
+```python
+# nosemgrep: python.lang.security.hardcoded-password
+password = "hardcoded"
+```
+
+The comment marker is case-insensitive, and both `nosemgrep` and `nosem` are recognized:
+
+```javascript
+eval(userInput); // nosem
+```
+
+<Note>
+  Suppressed findings are tracked in Semgrep's output as "ignored" rather than silently dropped. This lets you audit which findings you've chosen to accept.
+</Note>
+
+## Path filtering with `--include` and `--exclude`
+
+For one-off scans, use CLI flags instead of editing `.semgrepignore`:
+
+```bash
+# Scan only Python files
+semgrep --config=auto --include="*.py" .
+
+# Skip test directories
+semgrep --config=auto --exclude="tests/" --exclude="*_test.go" .
+
+# Combine both
+semgrep --config=auto --include="src/**" --exclude="src/generated/" .
+```
+
+`--include` and `--exclude` accept glob patterns. When both are specified, `--include` is applied first, then `--exclude` filters within those results.
+
+## Per-rule path filtering with `paths:`
+
+You can restrict a rule to only apply within specific paths — or exclude it from certain paths — by adding a `paths:` field to the rule definition:
+
+```yaml
+rules:
+  - id: no-eval
+    pattern: eval(...)
+    message: Avoid using eval()
+    severity: ERROR
+    languages: [javascript]
+    paths:
+      include:
+        - src/
+      exclude:
+        - src/vendor/
+        - "**/*.test.js"
+```
+
+This is useful when a rule is only meaningful in a subset of your codebase, such as applying a security rule only to your application code and not to test helpers.
+
+## Disabling `.gitignore` integration
+
+By default, Semgrep respects your `.gitignore` file. To scan files that are gitignored, pass `--no-git-ignore`:
+
+```bash
+semgrep --config=auto --no-git-ignore .
+```
+
+This is sometimes needed when scanning a clean checkout or a directory that isn't a git repository.

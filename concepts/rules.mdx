@@ -1,0 +1,251 @@
+---
+title: "Rules"
+description: "A Semgrep rule is a YAML file that describes a pattern to match in code, along with metadata about what the match means and how severe it is."
+keywords: ["rules", "yaml", "pattern", "severity", "languages", "semgrep rule structure"]
+---
+
+A Semgrep rule is a YAML file that tells Semgrep what to look for in code, what to say when it finds a match, and how severe the finding is. Rules are the core unit of analysis in Semgrep — everything from a quick one-liner search to a complex security check is expressed as a rule.
+
+## Minimal rule structure
+
+Every rule requires five fields:
+
+```yaml
+rules:
+  - id: rule-id
+    pattern: some.pattern()
+    message: Describe what was found and why it matters
+    severity: WARNING
+    languages: [python]
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `id` | Yes | Unique identifier for the rule. Use kebab-case. |
+| `pattern` or `patterns` | Yes | The code pattern(s) to match. |
+| `message` | Yes | What Semgrep reports when the rule fires. |
+| `severity` | Yes | `INFO`, `WARNING`, or `ERROR`. |
+| `languages` | Yes | List of language identifiers the rule applies to. |
+
+## A complete example
+
+This rule detects Python `print()` statements, which are often left in code accidentally:
+
+```yaml
+rules:
+  - id: no-print-statements
+    pattern: print(...)
+    message: >
+      Found a print() statement. Use a logger instead to ensure output
+      is properly handled in production.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: maintainability
+      technology: [python]
+```
+
+This rule matches any call to `print()` with any arguments. The `...` (ellipsis) matches zero or more arguments.
+
+## Rule fields reference
+
+### `id`
+
+A unique string identifier for the rule. Rule IDs appear in output and can be used to suppress findings with `# nosemgrep: rule-id`.
+
+```yaml
+id: detect-eval-use
+```
+
+Use descriptive, kebab-case identifiers. When publishing to the registry, the full rule ID includes the namespace, such as `python.security.detect-eval-use`.
+
+### `pattern` and `patterns`
+
+Use `pattern` for a single match expression:
+
+```yaml
+pattern: eval($X)
+```
+
+Use `patterns` when you need to combine multiple conditions with boolean logic:
+
+```yaml
+patterns:
+  - pattern: $OBJ.execute($QUERY)
+  - pattern-not: $OBJ.execute("...")
+```
+
+See [Patterns](/concepts/patterns) for the full list of pattern operators.
+
+### `pattern-not`
+
+Excludes matches from results. Use inside `patterns` to subtract specific cases:
+
+```yaml
+patterns:
+  - pattern: open($PATH, ...)
+  - pattern-not: open($PATH, "r")
+```
+
+This matches any `open()` call except those explicitly opened in read mode.
+
+### `pattern-inside`
+
+Restricts matches to code inside a surrounding context:
+
+```yaml
+patterns:
+  - pattern: $X = request.GET.get(...)
+  - pattern-inside: |
+      def $FUNC(request, ...):
+        ...
+```
+
+This matches assignments from `request.GET` only inside Django view functions.
+
+### `message`
+
+The text shown to developers when the rule fires. Write a clear message that explains both what was found and why it matters. You can interpolate matched metavariables:
+
+```yaml
+message: >
+  $FUNC is called with unsanitized input. Validate or escape
+  the argument before passing it to $FUNC.
+```
+
+### `severity`
+
+Controls how findings are displayed and filtered:
+
+| Value | When to use |
+|---|---|
+| `INFO` | Informational findings, best-practice suggestions |
+| `WARNING` | Potential issues that may not be bugs |
+| `ERROR` | Definite problems that should be fixed |
+
+### `languages`
+
+A list of language identifiers specifying which files the rule applies to. Semgrep only runs the rule against files matching one of the specified languages:
+
+```yaml
+languages: [javascript, typescript]
+```
+
+See [Supported Languages](/concepts/languages) for all valid identifiers.
+
+### `metadata`
+
+An optional free-form object for attaching additional information to a rule. Metadata has no effect on matching — it is for documentation and tooling:
+
+```yaml
+metadata:
+  category: security
+  cwe: "CWE-89: SQL Injection"
+  owasp: "A1: Injection"
+  confidence: HIGH
+  technology: [django]
+```
+
+The Semgrep Registry uses specific metadata fields for display and filtering. Community rules commonly include `category`, `technology`, `confidence`, and CWE/CVE references.
+
+## Rule examples by language
+
+<CodeGroup>
+
+```yaml python — detect use of assert for auth
+rules:
+  - id: no-assert-for-auth
+    pattern: assert $USER.is_authenticated
+    message: Do not use assert for authentication checks. Use a proper guard instead.
+    severity: ERROR
+    languages: [python]
+```
+
+```yaml javascript — detect dangerouslySetInnerHTML
+rules:
+  - id: no-dangerously-set-inner-html
+    pattern: <$EL dangerouslySetInnerHTML=... />
+    message: dangerouslySetInnerHTML can expose your app to XSS. Sanitize content first.
+    severity: WARNING
+    languages: [javascript, typescript, jsx, tsx]
+```
+
+```yaml go — detect fmt.Println in production code
+rules:
+  - id: no-fmt-println
+    pattern: fmt.Println(...)
+    message: Replace fmt.Println with a structured logger.
+    severity: INFO
+    languages: [go]
+```
+
+```yaml java — detect System.exit calls
+rules:
+  - id: no-system-exit
+    pattern: System.exit($CODE)
+    message: Calling System.exit() abruptly terminates the JVM. Throw an exception instead.
+    severity: WARNING
+    languages: [java]
+```
+
+</CodeGroup>
+
+## Loading rules
+
+Semgrep loads rules using the `--config` flag:
+
+```bash
+# Run a single local rule file
+semgrep --config rules/my-rule.yaml src/
+
+# Run all rules in a directory
+semgrep --config rules/ src/
+
+# Run a rule pack from the registry
+semgrep --config p/python src/
+
+# Auto-detect the best rules for your project
+semgrep --config auto src/
+```
+
+### Rule sources
+
+<CardGroup cols={2}>
+  <Card title="Local files" icon="file">
+    Pass a `.yaml` file path or a directory. Semgrep loads all `.yaml` and `.yml` files in the directory.
+  </Card>
+  <Card title="Registry packs" icon="database">
+    Use `p/<pack-name>` to run a curated rule pack from the Semgrep Registry (e.g., `p/ci`, `p/owasp-top-ten`).
+  </Card>
+  <Card title="Registry rules" icon="list">
+    Use `r/<rule-id>` to run a single rule from the registry (e.g., `r/python.django.security.injection.tainted-sql-string`).
+  </Card>
+  <Card title="Auto" icon="wand-magic-sparkles">
+    Use `--config auto` to let Semgrep automatically select appropriate rules based on the languages in your codebase.
+  </Card>
+</CardGroup>
+
+### Rule file format
+
+A single YAML file can contain one or many rules. The top-level key is always `rules`, which is a list:
+
+```yaml
+rules:
+  - id: rule-one
+    pattern: foo()
+    message: Found foo()
+    severity: WARNING
+    languages: [python]
+
+  - id: rule-two
+    pattern: bar()
+    message: Found bar()
+    severity: INFO
+    languages: [python]
+```
+
+## Next steps
+
+- Learn about [Patterns](/concepts/patterns) to write more precise rules
+- Understand [Metavariables](/concepts/metavariables) for capturing and comparing code elements
+- See [Writing Rules](/writing-rules/overview) for advanced rule-writing techniques

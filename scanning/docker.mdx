@@ -1,0 +1,92 @@
+---
+title: "Running with Docker"
+description: "Scan your code with Semgrep using the official Docker image — no local installation required."
+---
+
+The official `semgrep/semgrep` Docker image lets you run Semgrep without installing Python or any dependencies on your host machine. It is built on Alpine Linux and includes the full `semgrep` CLI and `semgrep-core` binary.
+
+<Note>
+  The `semgrep/semgrep` image is built from the official Semgrep release process and corresponds to published PyPI releases. The image sets `SEMGREP_IN_DOCKER=1` automatically so Semgrep can adjust its behavior for containerized environments.
+</Note>
+
+## Pull the image
+
+```bash
+docker pull semgrep/semgrep
+```
+
+## Basic scan
+
+Mount your source code into the container at `/src` and run a scan:
+
+```bash
+docker run -it -v "${PWD}:/src" semgrep/semgrep semgrep scan --config=auto .
+```
+
+Semgrep's working directory inside the container is `/src`, which maps to your current directory on the host.
+
+## CI scan with a token
+
+To run `semgrep ci` in a Docker-based CI pipeline, pass your `SEMGREP_APP_TOKEN` as an environment variable:
+
+```bash
+docker run -e SEMGREP_APP_TOKEN=<TOKEN> --rm -v "${PWD}:/src" semgrep/semgrep semgrep ci
+```
+
+Replace `<TOKEN>` with your actual token. In CI environments, read the token from a secret rather than hard-coding it:
+
+```bash
+docker run -e SEMGREP_APP_TOKEN="${SEMGREP_APP_TOKEN}" --rm -v "${PWD}:/src" semgrep/semgrep semgrep ci
+```
+
+## Volume mounting
+
+Semgrep scans files inside the container, so you must mount the directory you want to scan to `/src`:
+
+| Docker flag | Purpose |
+|-------------|---------|
+| `-v "${PWD}:/src"` | Mount the current host directory as `/src` inside the container |
+| `--rm` | Remove the container after the scan completes |
+| `-it` | Allocate an interactive terminal (useful for local runs; omit in CI) |
+
+To scan a specific subdirectory, mount it directly:
+
+```bash
+docker run --rm -v "${PWD}/src:/src" semgrep/semgrep semgrep scan --config=auto .
+```
+
+## Docker Compose
+
+You can integrate Semgrep into a Docker Compose workflow for repeatable local scanning:
+
+```yaml docker-compose.yml
+services:
+  semgrep:
+    image: semgrep/semgrep
+    volumes:
+      - .:/src
+    command: semgrep scan --config=auto .
+    environment:
+      - SEMGREP_APP_TOKEN=${SEMGREP_APP_TOKEN}
+```
+
+Run the scan with:
+
+```bash
+docker compose run --rm semgrep
+```
+
+## Image tags
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | The most recent stable release (updated on each release) |
+| `v1.155.0` | A specific version, pinned for reproducible builds |
+| `canary` | The latest development build; may be unstable |
+
+Pin to a specific version tag in production pipelines to avoid unexpected behavior from automatic updates:
+
+```bash
+docker pull semgrep/semgrep:v1.155.0
+docker run --rm -v "${PWD}:/src" semgrep/semgrep:v1.155.0 semgrep scan --config=auto .
+```
